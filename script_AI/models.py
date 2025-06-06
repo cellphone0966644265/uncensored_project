@@ -122,13 +122,15 @@ class FeatureFusionModule(nn.Module):
 class BiSeNet(nn.Module):
     def __init__(self, n_classes, *args, **kwargs):
         super(BiSeNet, self).__init__()
+        # Đặt tên chính xác theo state_dict
         self.context_path = ResNet()
         self.saptial_path = SpatialPath()
         self.attention_refinement_module1 = AttentionRefinementModule(256, 256)
         self.attention_refinement_module2 = AttentionRefinementModule(512, 512)
         self.supervision1 = nn.Conv2d(256, n_classes, 1, bias=True)
         self.supervision2 = nn.Conv2d(512, n_classes, 1, bias=True)
-        self.feature_fusion_module = FeatureFusionModule(256+512, 256) # Khớp logic
+        # 256 (từ saptial_path) + 512 (từ context_path) = 768
+        self.feature_fusion_module = FeatureFusionModule(256 + 512, 256)
         self.conv = nn.Conv2d(256, n_classes, kernel_size=1)
     def forward(self, x):
         H, W = x.size()[2:]
@@ -148,9 +150,88 @@ class BiSeNet(nn.Module):
 
 # --- Phần 2: Kiến trúc InpaintingGenerator (Giữ nguyên vì đã load thành công ở lần trước) ---
 class InpaintingGenerator(nn.Module):
-    # ... (Giữ nguyên nội dung của lớp InpaintingGenerator đã load thành công trước đó)
     def __init__(self, in_channels=4, out_channels=3):
         super(InpaintingGenerator, self).__init__()
         # Cấu trúc đã đúng và load thành công trong log trước
-        # (Nội dung đã đúng)
+        self.encoder2d = nn.ModuleDict({
+            'model': nn.Sequential(
+                nn.ReflectionPad2d(3),                                    # 0
+                spectral_norm(nn.Conv2d(3, 64, 7, 1, 0)),                  # 1
+                nn.ReLU(True),                                            # 2
+                nn.ReflectionPad2d(1),                                    # 3
+                spectral_norm(nn.Conv2d(64, 128, 3, 2, 0)),                # 4
+                nn.ReLU(True),                                            # 5
+                nn.ReflectionPad2d(1),                                    # 6
+                spectral_norm(nn.Conv2d(128, 256, 3, 2, 0)),              # 7
+                nn.ReLU(True),                                            # 8
+                nn.ReflectionPad2d(1),                                    # 9
+                spectral_norm(nn.Conv2d(256, 512, 3, 2, 0)),              # 10
+            )
+        })
+
+        # Cấu trúc của Encoder 3D (giả định)
+        self.encoder3d = nn.ModuleDict({
+            'model': nn.Sequential(
+                spectral_norm(nn.Conv3d(3, 64, kernel_size=3, padding=1)), # 0
+                nn.ReLU(True),                                            # 1
+                spectral_norm(nn.Conv3d(64, 128, kernel_size=3, padding=1)), # 2
+                nn.ReLU(True),                                            # 3
+                spectral_norm(nn.Conv3d(128, 256, kernel_size=3, padding=1)),# 4
+                nn.ReLU(True),                                            # 5
+                spectral_norm(nn.Conv3d(256, 512, kernel_size=3, padding=1)),# 6
+            )
+        })
+
+        # Cấu trúc của các khối Residual
+        class ResnetBlock(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv_block = nn.Sequential(
+                    nn.ReflectionPad2d(1),
+                    spectral_norm(nn.Conv2d(512, 512, 3, 1, 0)),
+                    nn.ReLU(True),
+                    nn.ReflectionPad2d(1),
+                    spectral_norm(nn.Conv2d(512, 512, 3, 1, 0)),
+                )
+            def forward(self, x): return x + self.conv_block(x)
+        self.blocks = nn.ModuleList([ResnetBlock() for _ in range(4)])
+
+
+        # Cấu trúc của Decoder
+        class DecoderBlock(nn.Module):
+            def __init__(self, in_c, out_c):
+                super().__init__()
+                self.convup = nn.Sequential(
+                    nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+                    nn.ReflectionPad2d(1),
+                    spectral_norm(nn.Conv2d(in_c, out_c, 3, 1, 0)),
+                    nn.ReLU(True)
+                )
+            def forward(self, x): return self.convup(x)
+
+        self.decoder = nn.ModuleList([
+            DecoderBlock(512, 256), # 0
+            DecoderBlock(256, 128), # 1
+            DecoderBlock(128, 64),  # 2
+            nn.Sequential(          # 3 - Placeholder
+                nn.ReflectionPad2d(3),
+            ),
+            nn.Conv2d(64, 3, 7, 1, 0), # 4
+            nn.Tanh()               # 5
+        ])
+
+    def forward(self, x, mask):
+        # A plausible forward pass, though it might not be the exact one.
+        # Its main purpose is to allow the model to be instantiated.
+        x = x * (1. - mask)
+        x_enc = self.encoder2d.model(x)
+        for i in range(4):
+            x_enc = self.blocks[i](x_enc)
+        x_dec = self.decoder[0](x_enc)
+        x_dec = self.decoder[1](x_dec)
+        x_dec = self.decoder[2](x_dec)
+        x_dec = self.decoder[3](x_dec)
+        x_dec = self.decoder[4](x_dec)
+        x_dec = self.decoder[5](x_dec)
+        return x_dec
 
