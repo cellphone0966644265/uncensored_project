@@ -1,4 +1,4 @@
-torchvision
+torchvision==2.6.0
 PyYAML==6.0.1
 ffmpeg-python==0.2.0
 gdown==5.2.0
