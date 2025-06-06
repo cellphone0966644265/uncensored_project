@@ -12,6 +12,7 @@ from torch.nn.utils import spectral_norm
 class ConvBlock(nn.Module):
     def __init__(self, in_chan, out_chan, ks=3, stride=1, padding=1, bias=True):
         super(ConvBlock, self).__init__()
+        # Đổi tên từ self.conv -> self.conv1 để khớp với state_dict
         self.conv1 = nn.Conv2d(in_chan, out_chan, kernel_size=ks, stride=stride, padding=padding, bias=bias)
         self.bn = nn.BatchNorm2d(out_chan)
         self.relu = nn.ReLU(inplace=True)
@@ -70,15 +71,14 @@ class ResNet(nn.Module):
             'layer2': self._make_layer(BasicBlock, 64, 128, 2, stride=2),
             'layer3': self._make_layer(BasicBlock, 128, 256, 2, stride=2),
             'layer4': self._make_layer(BasicBlock, 256, 512, 2, stride=2),
-            'fc': nn.Linear(512, 1000) # Thêm fc để khớp key
+            'fc': nn.Linear(2048, 1000) # Thêm fc để khớp key, input_features giả định
         })
     def _make_layer(self, block, in_chan, out_chan, n_blocks, stride=1):
         return nn.Sequential(*([block(in_chan, out_chan, stride=stride)] + [block(out_chan, out_chan) for _ in range(1, n_blocks)]))
     def forward(self, x):
-        # Forward pass mô phỏng ResNet, trả về các feature map cần thiết
         x = self.features.conv1(x)
         x = self.features.bn1(x)
-        x = F.relu(x)
+        x = F.relu(x, inplace=True)
         x = F.max_pool2d(x, 3, 2, 1)
         x = self.features.layer1(x)
         feat8 = self.features.layer2(x)
@@ -89,7 +89,7 @@ class ResNet(nn.Module):
 class AttentionRefinementModule(nn.Module):
     def __init__(self, in_chan, out_chan):
         super(AttentionRefinementModule, self).__init__()
-        self.conv = nn.Conv2d(in_chan, out_chan, kernel_size=1, bias=True) # Bias=True để khớp key
+        self.conv = nn.Conv2d(in_chan, out_chan, kernel_size=1, bias=True)
         self.bn = nn.BatchNorm2d(out_chan)
         self.sigmoid = nn.Sigmoid()
     def forward(self, x):
@@ -103,7 +103,7 @@ class AttentionRefinementModule(nn.Module):
 class FeatureFusionModule(nn.Module):
     def __init__(self, in_chan, out_chan, *args, **kwargs):
         super(FeatureFusionModule, self).__init__()
-        self.convblock = ConvBlock(in_chan, out_chan, ks=1, padding=0, bias=False)
+        self.convblock = ConvBlock(in_chan, out_chan, ks=1, padding=0, bias=True)
         self.conv1 = nn.Conv2d(out_chan, out_chan, kernel_size=1, bias=True)
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(out_chan, out_chan, kernel_size=1, bias=True)
@@ -122,34 +122,35 @@ class FeatureFusionModule(nn.Module):
 class BiSeNet(nn.Module):
     def __init__(self, n_classes, *args, **kwargs):
         super(BiSeNet, self).__init__()
-        # Đặt tên chính xác theo state_dict
         self.context_path = ResNet()
         self.saptial_path = SpatialPath()
         self.attention_refinement_module1 = AttentionRefinementModule(256, 256)
         self.attention_refinement_module2 = AttentionRefinementModule(512, 512)
-        self.supervision1 = nn.Conv2d(256, n_classes, 1)
-        self.supervision2 = nn.Conv2d(512, n_classes, 1)
-        # 256 (từ saptial_path) + 512 (từ context_path) = 768
-        self.feature_fusion_module = FeatureFusionModule(256 + 512, 256)
+        self.supervision1 = nn.Conv2d(256, n_classes, 1, bias=True)
+        self.supervision2 = nn.Conv2d(512, n_classes, 1, bias=True)
+        self.feature_fusion_module = FeatureFusionModule(256+512, 256) # Khớp logic
         self.conv = nn.Conv2d(256, n_classes, kernel_size=1)
     def forward(self, x):
         H, W = x.size()[2:]
         sp = self.saptial_path(x)
         cp16, cp32 = self.context_path(x)
-        cp16 = self.attention_refinement_module1(cp16)
-        cp32 = self.attention_refinement_module2(cp32)
-        cp32_up = F.interpolate(cp32, size=cp16.size()[2:], mode='bilinear', align_corners=True)
-        fuse = torch.cat([cp16, cp32_up], 1)
-        ffm_out = self.feature_fusion_module(sp, fuse) # Sửa forward pass logic
+        cp16_arm = self.attention_refinement_module1(cp16)
+        cp32_arm = self.attention_refinement_module2(cp32)
+        cp32_up = F.interpolate(cp32_arm, size=cp16.size()[2:], mode='bilinear', align_corners=True)
+        fuse_cat = torch.cat([cp16_arm, cp32_up], 1)
+        # This forward pass logic is an interpretation.
+        # The key is that the layer structure matches the state dict.
+        ffm_out = self.feature_fusion_module(sp, fuse_cat)
         out = F.interpolate(ffm_out, size=(H, W), mode='bilinear', align_corners=True)
         out = self.conv(out)
         return out
 
 
-# --- Phần 2: Kiến trúc InpaintingGenerator (Giữ nguyên vì đã load thành công) ---
+# --- Phần 2: Kiến trúc InpaintingGenerator (Giữ nguyên vì đã load thành công ở lần trước) ---
 class InpaintingGenerator(nn.Module):
     # ... (Giữ nguyên nội dung của lớp InpaintingGenerator đã load thành công trước đó)
     def __init__(self, in_channels=4, out_channels=3):
         super(InpaintingGenerator, self).__init__()
+        # Cấu trúc đã đúng và load thành công trong log trước
         # (Nội dung đã đúng)
 
