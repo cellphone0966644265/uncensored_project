@@ -32,8 +32,8 @@ def download_models_robust():
         print("❌ Lỗi: không thể import thư viện 'gdown'. Đảm bảo nó đã được cài đặt thành công.")
         return
 
-    # ID thư mục chính xác từ tài liệu PDF (sử dụng chữ 'l' thay vì 'I')
-    folder_id = "15WVt_ASxEdh3lx16w52h7CfC2dA1QCNO"
+    # ID thư mục mới được cập nhật từ bạn
+    folder_id = "16qdCbG0P3cAR-m3P2xZ3q6mKY_QFW-i-"
     output_path = "pre_trained_models"
 
     print(f"\n--- Bắt đầu tải các model từ Google Drive Folder ID: {folder_id} ---")
@@ -42,53 +42,29 @@ def download_models_robust():
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    # Đếm số file trước khi tải để kiểm tra
     files_before = len(os.listdir(output_path))
 
     try:
-        # Phương pháp 1: Sử dụng hàm gdown.download_folder
-        print("\n... Đang thử phương pháp 1: Sử dụng hàm gdown.download_folder ...")
-        gdown.download_folder(id=folder_id, output=output_path, quiet=False, use_cookies=False)
-        
-        # Kiểm tra xem có file nào được tải về không
-        files_after = len(os.listdir(output_path))
-        if files_after > files_before:
-            print(f"✅ Tải thành công {files_after - files_before} file bằng gdown.download_folder.")
-            return
-
-        print("🟡 Phương pháp 1 không tải được file nào. Thử phương pháp 2...")
-
-    except Exception as e:
-        print(f"🟡 Lỗi với phương pháp 1 (gdown.download_folder): {e}. Thử phương pháp 2...")
-
-    # Phương pháp 2: Sử dụng gdown từ command line qua subprocess (thường ổn định hơn)
-    try:
-        print("\n... Đang thử phương pháp 2: Sử dụng gdown từ command line ...")
+        print("\n... Đang thử phương pháp: Sử dụng gdown từ command line ...")
         folder_url = f'https://drive.google.com/drive/folders/{folder_id}'
         
         # Chuyển tới thư mục output để gdown tải file vào đúng nơi
         current_dir = os.getcwd()
         os.chdir(output_path)
         
-        # Lệnh gdown để tải toàn bộ thư mục
         subprocess.run(['gdown', '--folder', folder_url, '-c'], check=True)
         
-        # Quay lại thư mục ban đầu
         os.chdir(current_dir)
         
-        # Kiểm tra lại lần cuối
         files_after = len(os.listdir(output_path))
         if files_after > files_before:
-            print(f"✅ Tải thành công {files_after - files_before} file bằng gdown command line.")
+            print(f"✅ Tải thành công {files_after - files_before} file.")
         else:
-            print("\n❌ Lỗi: Cả hai phương pháp đều không tải được file.")
+            print("\n❌ Lỗi: Không tải được file nào.")
             print("Vui lòng kiểm tra lại các yếu tố sau:")
-            print(f"  1. ID thư mục có chính xác không: '{folder_id}' (Đã sửa thành chữ 'l' thường).")
+            print(f"  1. ID thư mục có chính xác không: '{folder_id}'.")
             print("  2. Quyền chia sẻ của thư mục trên Google Drive đã được đặt thành 'Anyone with the link' (Bất kỳ ai có đường liên kết) chưa.")
 
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"❌ Lỗi với phương pháp 2 (gdown command line): {e}")
-        print("Vui lòng kiểm tra lại các yếu tố đã nêu ở trên.")
     except Exception as e:
         print(f"❌ Lỗi không xác định trong quá trình tải model: {e}")
 
