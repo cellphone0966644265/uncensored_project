@@ -17,7 +17,8 @@ ffmpy==0.6.0
 psutil==5.9.5
 torch==2.6.0+cu124
 torchvision==0.21.0+cu124
-torchaudio==2.6.0+cu124"""
+torchaudio==2.6.0+cu124
+"""
     ),
     (
         "setup.py",
@@ -36,18 +37,25 @@ PRE_TRAINED_MODELS_DIR = os.path.join(SCRIPT_DIR, "pre_trained_models")
 REQUIREMENTS_FILE = os.path.join(SCRIPT_DIR, "requirements.txt")
 
 def install_requirements():
-    print(">>> Bước 1: Bắt đầu cài đặt các thư viện...")
+    """
+    Cài đặt tất cả thư viện từ requirements.txt.
+    Đây là phương pháp cài đặt gốc, phù hợp với môi trường Colab.
+    """
+    print(">>> Bước 1: Bắt đầu cài đặt các thư viện từ requirements.txt...")
     if not os.path.isfile(REQUIREMENTS_FILE):
         print(f">>> [Lỗi] Không tìm thấy file requirements.txt tại: {REQUIREMENTS_FILE}", file=sys.stderr)
         sys.exit(1)
     try:
+        # Chạy một lệnh pip install duy nhất
         subprocess.run([sys.executable, "-m", "pip", "install", "-r", REQUIREMENTS_FILE], check=True, capture_output=True, text=True, encoding='utf-8')
         print(">>> [Thành công] Đã cài đặt xong tất cả các thư viện.")
     except subprocess.CalledProcessError as e:
-        print(f">>> [Lỗi] Cài đặt thất bại:\\n{e.stderr}", file=sys.stderr)
+        print(">>> [Lỗi] Cài đặt thất bại. Vui lòng kiểm tra log bên dưới.", file=sys.stderr)
+        print(f"Lỗi chi tiết:\\n{e.stderr}", file=sys.stderr)
         sys.exit(1)
 
 def download_models():
+    """Tải các model đã được huấn luyện."""
     print(f"\\n>>> Bước 2: Bắt đầu tải models vào '{PRE_TRAINED_MODELS_DIR}'...")
     try:
         gdown.download_folder(id=MODEL_FOLDER_ID, output=PRE_TRAINED_MODELS_DIR, quiet=False, use_cookies=False)
@@ -57,6 +65,7 @@ def download_models():
         sys.exit(1)
 
 def create_project_structure():
+    """Tạo cấu trúc thư mục cần thiết."""
     print("\\n>>> Bước 3: Bắt đầu tạo cấu trúc thư mục...")
     dirs_to_create = [
         "data/add_youknow/images", "data/add_youknow/masks",
@@ -128,14 +137,14 @@ def handle_image(args, temp_dir):
         run_command(["python", os.path.join(SCRIPT_AI_RUN_DIR, "run_mosaic_position.py"), "--input_dir", input_dir, "--output_dir", mask_dir])
 
         sys.stderr.write("Bước 2: Chạy 'clean_youknow' để tái tạo ảnh...\\n")
-        # Đầu vào của clean_youknow là ảnh gốc và mask vừa tạo
         run_command(["python", os.path.join(SCRIPT_AI_RUN_DIR, "run_clean_youknow.py"), "--input_dir", input_dir, "--mask_dir", mask_dir, "--output_dir", output_dir])
     
     final_output_path = os.path.join(output_dir, os.path.basename(args.file_path))
     final_dest_dir = args.folder_path or OUTPUT_DIR
     os.makedirs(final_dest_dir, exist_ok=True)
-    shutil.move(final_output_path, final_dest_dir)
-    sys.stderr.write(f"Đã lưu kết quả vào: {os.path.join(final_dest_dir, os.path.basename(args.file_path))}\\n")
+    final_dest_file = os.path.join(final_dest_dir, os.path.basename(args.file_path))
+    shutil.move(final_output_path, final_dest_file)
+    sys.stderr.write(f"Đã lưu kết quả vào: {final_dest_file}\\n")
 
 def handle_video(args, temp_dir):
     info = run_command(["python", os.path.join(TOOL_DIR, "get_file_info.py"), "--input", args.file_path])
@@ -153,7 +162,6 @@ def handle_video(args, temp_dir):
         frames_info = run_command(["python", os.path.join(TOOL_DIR, "video_to_frames.py"), "--input", chunk_path, "--output_dir", chunk_proc_dir])
         frames_folder = frames_info['frame_folder']
         
-        # Xử lý frames
         if args.task_name == 'add_youknow':
             processed_frames_dir = os.path.join(chunk_proc_dir, "processed_frames")
             run_command(["python", os.path.join(SCRIPT_AI_RUN_DIR, "run_add_youknow.py"), "--input_dir", frames_folder, "--output_dir", processed_frames_dir])
@@ -165,7 +173,6 @@ def handle_video(args, temp_dir):
             sys.stderr.write("Bước B: Chạy 'clean_youknow' để tái tạo các frame...\\n")
             run_command(["python", os.path.join(SCRIPT_AI_RUN_DIR, "run_clean_youknow.py"), "--input_dir", frames_folder, "--mask_dir", mask_dir, "--output_dir", processed_frames_dir])
 
-        # Ghép frames thành video
         proc_chunk_cmd = ["python", os.path.join(TOOL_DIR, "frames_to_video.py"), "--frame_folder", processed_frames_dir, "--metadata_json", metadata_json, "--output", os.path.join(chunk_proc_dir, "out.mp4")]
         if frames_info.get('audio_path'): proc_chunk_cmd.extend(["--audio_path", frames_info['audio_path']])
         processed_chunks.append(run_command(proc_chunk_cmd).get("output_path"))
@@ -504,4 +511,5 @@ def create_project_files(base_dir="UnOrCensored_Project"):
 
 if __name__ == "__main__":
     create_project_files()
+
 
