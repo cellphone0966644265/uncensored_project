@@ -2,6 +2,7 @@
 import os
 import sys
 import shutil
+import subprocess
 
 # Danh sách chứa toàn bộ các file của dự án
 # Mỗi phần tử là một tuple: (đường_dẫn_file, nội_dung_file)
@@ -22,31 +23,22 @@ torchaudio==2.6.0+cu124
     ),
     (
         "setup.py",
-        """# -*- coding: utf-8 -*-
-import os
+        """import os
 import subprocess
 import sys
 import gdown
 
-# --- Lấy đường dẫn tuyệt đối của thư mục chứa script này ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# --- Cấu hình ---
 MODEL_FOLDER_ID = "16qdCbG0P3cAR-m3P2xZ3q6mKY_QFW-i-"
 PRE_TRAINED_MODELS_DIR = os.path.join(SCRIPT_DIR, "pre_trained_models")
 REQUIREMENTS_FILE = os.path.join(SCRIPT_DIR, "requirements.txt")
 
 def install_requirements():
-    """
-    Cài đặt tất cả thư viện từ requirements.txt.
-    Đây là phương pháp cài đặt gốc, phù hợp với môi trường Colab.
-    """
     print(">>> Bước 1: Bắt đầu cài đặt các thư viện từ requirements.txt...")
     if not os.path.isfile(REQUIREMENTS_FILE):
         print(f">>> [Lỗi] Không tìm thấy file requirements.txt tại: {REQUIREMENTS_FILE}", file=sys.stderr)
         sys.exit(1)
     try:
-        # Chạy một lệnh pip install duy nhất
         subprocess.run([sys.executable, "-m", "pip", "install", "-r", REQUIREMENTS_FILE], check=True, capture_output=True, text=True, encoding='utf-8')
         print(">>> [Thành công] Đã cài đặt xong tất cả các thư viện.")
     except subprocess.CalledProcessError as e:
@@ -55,7 +47,6 @@ def install_requirements():
         sys.exit(1)
 
 def download_models():
-    """Tải các model đã được huấn luyện."""
     print(f"\\n>>> Bước 2: Bắt đầu tải models vào '{PRE_TRAINED_MODELS_DIR}'...")
     try:
         gdown.download_folder(id=MODEL_FOLDER_ID, output=PRE_TRAINED_MODELS_DIR, quiet=False, use_cookies=False)
@@ -65,7 +56,6 @@ def download_models():
         sys.exit(1)
 
 def create_project_structure():
-    """Tạo cấu trúc thư mục cần thiết."""
     print("\\n>>> Bước 3: Bắt đầu tạo cấu trúc thư mục...")
     dirs_to_create = [
         "data/add_youknow/images", "data/add_youknow/masks",
@@ -94,8 +84,7 @@ if __name__ == "__main__":
     ),
     (
         "run.py",
-        """# -*- coding: utf-8 -*-
-import argparse, json, sys, os, subprocess, shutil, datetime
+        """import argparse, json, sys, os, subprocess, shutil, datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TOOL_DIR = os.path.join(SCRIPT_DIR, "tool")
@@ -124,11 +113,9 @@ def handle_image(args, temp_dir):
     os.makedirs(output_dir, exist_ok=True)
     shutil.copy(args.file_path, input_dir)
 
-    # Chỉ phát hiện và xuất ra mask
     if args.task_name == 'add_youknow':
         run_command(["python", os.path.join(SCRIPT_AI_RUN_DIR, "run_add_youknow.py"), "--input_dir", input_dir, "--output_dir", output_dir])
     
-    # Quy trình 2 bước: phát hiện vị trí -> tái tạo
     elif args.task_name == 'clean_youknow':
         sys.stderr.write("Bắt đầu quy trình 2 bước cho 'clean_youknow' trên ảnh...\\n")
         mask_dir = os.path.join(temp_dir, "generated_masks")
@@ -207,8 +194,7 @@ if __name__ == "__main__":
     ),
     (
         "train.py",
-        """# -*- coding: utf-8 -*-
-import argparse, sys, os, datetime
+        """import argparse, sys, os, datetime
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(SCRIPT_DIR)
 from script_AI.model_loader import load_model
@@ -244,33 +230,26 @@ if __name__ == '__main__':
     main()"""
     ),
     # --- tool/ ---
-    ("tool/get_file_type.py", """# -*- coding: utf-8 -*-
-import os, argparse, json, sys
-def get_file_type(file_path):
-    video_ext = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm']; image_ext = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext in video_ext: return {"file_type": "video"}
-    if ext in image_ext: return {"file_type": "image"}
-    return {"file_type": "unknown"}
+    ("tool/get_file_type.py", """import os, argparse, json
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); args = parser.parse_args()
-    print(json.dumps(get_file_type(args.input)))
+    video_ext = ['.mp4', '.avi', '.mov', '.mkv']; image_ext = ['.jpg', '.jpeg', '.png', '.bmp']
+    ext = os.path.splitext(args.input)[1].lower()
+    if ext in video_ext: print(json.dumps({"file_type": "video"}))
+    elif ext in image_ext: print(json.dumps({"file_type": "image"}))
+    else: print(json.dumps({"file_type": "unknown"}))
 if __name__ == "__main__": main()"""),
-    ("tool/get_file_info.py", """# -*- coding: utf-8 -*-
-import cv2, argparse, json, sys
-def get_video_info(video_path):
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened(): return {"error": f"Không thể mở: {video_path}"}
+    ("tool/get_file_info.py", """import cv2, argparse, json
+def main():
+    parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); args = parser.parse_args()
+    cap = cv2.VideoCapture(args.input)
+    if not cap.isOpened(): print(json.dumps({"error": f"Không thể mở: {args.input}"})); return
     try:
         fps = cap.get(cv2.CAP_PROP_FPS)
-        return {"metadata": {"fps": fps, "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)), "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps if fps > 0 else 0}}
+        print(json.dumps({"metadata": {"fps": fps, "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)), "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT)/fps if fps > 0 else 0}}))
     finally: cap.release()
-def main():
-    parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); args = parser.parse_args()
-    print(json.dumps(get_video_info(args.input)))
 if __name__ == "__main__": main()"""),
-    ("tool/cut_video.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os; from ffmpy import FFmpeg
+    ("tool/cut_video.py", """import argparse,json,sys,os; from ffmpy import FFmpeg
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); parser.add_argument('--output', required=True); parser.add_argument('--start', required=True); parser.add_argument('--end', default=None); args = parser.parse_args()
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -278,29 +257,24 @@ def main():
     if args.end: opts.extend(['-to', args.end])
     ff = FFmpeg(global_options=['-y'], inputs={args.input: ['-ss', args.start]}, outputs={args.output: opts})
     try:
-        ff.run(stdout=sys.stderr, stderr=sys.stderr)
-        print(json.dumps({"output_path": os.path.abspath(args.output)}))
+        ff.run(stdout=sys.stderr, stderr=sys.stderr); print(json.dumps({"output_path": os.path.abspath(args.output)}))
     except Exception as e: print(json.dumps({"error": "Lỗi FFmpeg", "details": str(e)}))
 if __name__ == "__main__": main()"""),
-    ("tool/duration_split.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os,psutil; from ffmpy import FFmpeg
+    ("tool/duration_split.py", """import argparse,json,sys,os,psutil; from ffmpy import FFmpeg
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); parser.add_argument('--fps', type=float, required=True); args = parser.parse_args()
-    temp_dir = "tmp"; os.makedirs(temp_dir, exist_ok=True)
-    temp_frame = os.path.join(temp_dir, f"temp_frame.png")
+    temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tmp'); os.makedirs(temp_dir, exist_ok=True)
+    temp_frame = os.path.join(temp_dir, "temp_frame.png")
     ff = FFmpeg(global_options=['-y'], inputs={args.input:['-ss','00:00:01']}, outputs={temp_frame:['-vframes','1']})
     try:
-        ff.run(stderr=sys.stderr)
-        data_rate = os.path.getsize(temp_frame) * 3 * args.fps
-        usable_space = psutil.disk_usage('.').free * 0.8
-        duration = int(usable_space / data_rate) if data_rate > 0 else 300
+        ff.run(stderr=sys.stderr); data_rate = os.path.getsize(temp_frame) * 3 * args.fps
+        usable_space = psutil.disk_usage(os.path.abspath('.')).free * 0.8; duration = int(usable_space/data_rate) if data_rate > 0 else 300
         print(json.dumps({"optimal_chunk_duration": duration}))
     except: print(json.dumps({"optimal_chunk_duration": 300}))
     finally:
         if os.path.exists(temp_frame): os.remove(temp_frame)
 if __name__ == "__main__": main()"""),
-    ("tool/split_video.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os; from ffmpy import FFmpeg
+    ("tool/split_video.py", """import argparse,json,sys,os; from ffmpy import FFmpeg
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); parser.add_argument('--duration', type=int, required=True); parser.add_argument('--output_dir', required=True); args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
@@ -312,8 +286,7 @@ def main():
         print(json.dumps({"chunk_paths": chunks}))
     except Exception as e: print(json.dumps({"error":"Lỗi FFmpeg", "details":str(e)}))
 if __name__ == "__main__": main()"""),
-    ("tool/video_to_frames.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os; from ffmpy import FFmpeg
+    ("tool/video_to_frames.py", """import argparse,json,sys,os; from ffmpy import FFmpeg
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--input', required=True); parser.add_argument('--output_dir', required=True); args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True); frame_dir = os.path.join(args.output_dir, 'frames'); os.makedirs(frame_dir, exist_ok=True)
@@ -327,8 +300,7 @@ def main():
         print(json.dumps({"frame_folder": os.path.abspath(frame_dir), "audio_path": audio_out_path}))
     except Exception as e: print(json.dumps({"error": "Lỗi FFmpeg", "details": str(e)}))
 if __name__ == "__main__": main()"""),
-    ("tool/frames_to_video.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os; from ffmpy import FFmpeg
+    ("tool/frames_to_video.py", """import argparse,json,sys,os; from ffmpy import FFmpeg
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--frame_folder', required=True); parser.add_argument('--audio_path', default=None); parser.add_argument('--metadata_json', required=True); parser.add_argument('--output', required=True); args = parser.parse_args()
     try: fps = json.loads(args.metadata_json).get('fps')
@@ -342,8 +314,7 @@ def main():
     try: ff.run(stderr=sys.stderr); print(json.dumps({"output_path": os.path.abspath(args.output)}))
     except Exception as e: print(json.dumps({"error": "Lỗi FFmpeg", "details": str(e)}))
 if __name__ == "__main__": main()"""),
-    ("tool/merge_video.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os; from ffmpy import FFmpeg
+    ("tool/merge_video.py", """import argparse,json,sys,os; from ffmpy import FFmpeg
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--input_list_file', required=True); parser.add_argument('--output', required=True); args = parser.parse_args()
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -351,8 +322,7 @@ def main():
     try: ff.run(stderr=sys.stderr); print(json.dumps({"final_video_path": os.path.abspath(args.output)}))
     except Exception as e: print(json.dumps({"error": "Lỗi FFmpeg", "details": str(e)}))
 if __name__ == "__main__": main()"""),
-    ("script_AI/images_processing.py", """# -*- coding: utf-8 -*-
-import torch, cv2, numpy as np; from torchvision import transforms
+    ("script_AI/images_processing.py", """import torch, cv2, numpy as np; from torchvision import transforms
 def load_image_to_tensor(p, size=(512,512), norm=True):
     img=cv2.imread(p); orig_s=img.shape[:2]; img=cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
     tl=[transforms.ToTensor(),transforms.Resize(size,antialias=True)]
@@ -366,8 +336,7 @@ def save_tensor_as_image(t,op,orig_s,is_inpaint=False):
 def load_mask_to_tensor(p,size=(512,512)):
     m=cv2.imread(p,cv2.IMREAD_GRAYSCALE); _,m=cv2.threshold(m,127,255,cv2.THRESH_BINARY)
     return transforms.Compose([transforms.ToTensor(),transforms.Resize(size,antialias=True)])(m).unsqueeze(0)"""),
-    ("script_AI/model_loader.py", """# -*- coding: utf-8 -*-
-import torch, os, sys; SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR))
+    ("script_AI/model_loader.py", """import torch, os, sys; SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR))
 from script_AI.models import AddYouknowModel, CleanYouknowModel
 def load_model(name,pth,dev='cpu'):
     if name in ['add_youknow','mosaic_position']: model=AddYouknowModel()
@@ -376,8 +345,7 @@ def load_model(name,pth,dev='cpu'):
     sd=torch.load(pth, map_location=torch.device(dev));
     if 'state_dict' in sd: sd=sd['state_dict']
     model.load_state_dict({k.replace('module.',''):v for k,v in sd.items()}); return model.to(dev).eval()"""),
-    ("script_AI/models.py", """# -*- coding: utf-8 -*-
-import torch, torch.nn as nn, torch.nn.functional as F
+    ("script_AI/models.py", """import torch, torch.nn as nn, torch.nn.functional as F
 class ResNet18(nn.Module):
     def __init__(self): super().__init__(); resnet=torch.hub.load('pytorch/vision:v0.10.0','resnet18',pretrained=True); self.f=nn.Sequential(*list(resnet.children())[:-2])
     def forward(self,x): return self.f(x)
@@ -405,8 +373,7 @@ class CleanYouknowModel(nn.Module):
         super().__init__(); self.e1=PConv(4,64,bn=False,sample='down'); self.e2=PConv(64,128,sample='down'); self.e3=PConv(128,256,sample='down'); self.e4=PConv(256,512,sample='down'); self.d1=PConv(512+256,256,activ='leaky',sample='up'); self.d2=PConv(256+128,128,activ='leaky',sample='up'); self.d3=PConv(128+64,64,activ='leaky',sample='up'); self.d4=PConv(64+4,3,bn=False,activ='leaky'); self.f=nn.Conv2d(3,3,1)
     def forward(self,x,m):
         e1,m1=self.e1(x,m);e2,m2=self.e2(e1,m1);e3,m3=self.e3(e2,m2);e4,m4=self.e4(e3,m3); d1,_=self.d1(torch.cat([e4,e3],1),torch.cat([m4,m3],1));d2,_=self.d2(torch.cat([d1,e2],1),torch.cat([m2,m2],1)); d3,_=self.d3(torch.cat([d2,e1],1),torch.cat([m2,m1],1));d4,_=self.d4(torch.cat([d3,x],1),torch.cat([m1,m],1)); return torch.tanh(self.f(d4))"""),
-    ("script_AI/run/run_add_youknow.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os,torch; from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
+    ("script_AI/run/run_add_youknow.py", """import argparse,json,sys,os,torch; from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
 def main():
     p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args(); dev='cuda' if torch.cuda.is_available() else 'cpu'
     model=load_model('add_youknow',os.path.join(os.path.dirname(SCRIPT_DIR), 'pre_trained_models/add_youknow.pth'),dev)
@@ -416,8 +383,7 @@ def main():
         except Exception as e:sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
     print(json.dumps({"processed_frame_folder":os.path.abspath(a.output_dir)}))
 if __name__=="__main__":main()"""),
-    ("script_AI/run/run_mosaic_position.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os,torch; from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
+    ("script_AI/run/run_mosaic_position.py", """import argparse,json,sys,os,torch; from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
 def main():
     p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args(); dev='cuda' if torch.cuda.is_available() else 'cpu'
     model=load_model('mosaic_position',os.path.join(os.path.dirname(SCRIPT_DIR),'pre_trained_models/mosaic_position.pth'),dev)
@@ -427,8 +393,7 @@ def main():
         except Exception as e:sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
     print(json.dumps({"processed_frame_folder":os.path.abspath(a.output_dir)}))
 if __name__=="__main__":main()"""),
-    ("script_AI/run/run_clean_youknow.py", """# -*- coding: utf-8 -*-
-import argparse,json,sys,os,torch; from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor,save_tensor_as_image
+    ("script_AI/run/run_clean_youknow.py", """import argparse,json,sys,os,torch; from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor,save_tensor_as_image
 def main():
     p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--mask_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args(); dev='cuda' if torch.cuda.is_available() else 'cpu'
     model=load_model('clean_youknow',os.path.join(os.path.dirname(SCRIPT_DIR),'pre_trained_models/clean_youknow.pth'),dev)
@@ -445,8 +410,7 @@ def main():
         except Exception as e:sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
     print(json.dumps({"processed_frame_folder":os.path.abspath(a.output_dir)}))
 if __name__=="__main__":main()"""),
-    ("script_AI/train/train_segmentation.py", """# -*- coding: utf-8 -*-
-import torch,os,sys;import torch.nn as nn;import torch.optim as optim;from torch.utils.data import Dataset,DataLoader;from tqdm import tqdm;sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))));from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor
+    ("script_AI/train/train_segmentation.py", """import torch,os,sys;import torch.nn as nn;import torch.optim as optim;from torch.utils.data import Dataset,DataLoader;from tqdm import tqdm;sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))));from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor
 class SegDS(Dataset):
     def __init__(self,id,md):self.id,self.md,self.f=id,md,sorted(os.listdir(id))
     def __len__(self):return len(self.f)
@@ -457,8 +421,7 @@ def train(m,d,l,o,c):
 def run_training_session(m,dp,e,lr,sp):
     dev='cuda' if torch.cuda.is_available() else 'cpu';m.to(dev);ds=SegDS(os.path.join(dp,'images'),os.path.join(dp,'masks'));l=DataLoader(ds,batch_size=4,shuffle=True,num_workers=2);opt=optim.Adam(m.parameters(),lr=lr);crit=nn.BCEWithLogitsLoss()
     for ep in range(e):sys.stderr.write(f"Epoch {ep+1}/{e}\\n");train(m,dev,l,opt,crit);torch.save(m.state_dict(),sp)"""),
-    ("script_AI/train/train_clean_youknow.py", """# -*- coding: utf-8 -*-
-import torch,os,sys;import torch.nn as nn;import torch.optim as optim;from torch.utils.data import Dataset,DataLoader;from tqdm import tqdm;sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))));from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor
+    ("script_AI/train/train_clean_youknow.py", """import torch,os,sys;import torch.nn as nn;import torch.optim as optim;from torch.utils.data import Dataset,DataLoader;from tqdm import tqdm;sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))));from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor
 class InpaintDS(Dataset):
     def __init__(self,dp):self.gtd,self.md,self.mskd=os.path.join(dp,'original_images'),os.path.join(dp,'mosaiced_images'),os.path.join(dp,'mosaic_masks');self.f=sorted(os.listdir(self.gtd))
     def __len__(self):return len(self.f)
