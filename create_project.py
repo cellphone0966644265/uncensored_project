@@ -5,6 +5,7 @@ import shutil
 import subprocess
 
 ALL_FILES = [
+    # --- File gốc ---
     (
         "requirements.txt",
         """gdown==5.2.0
@@ -20,34 +21,54 @@ torchaudio==2.6.0+cu124
     ),
     (
         "setup.py",
-        """import os, subprocess, sys, gdown
+        """import os
+import subprocess
+import sys
+import gdown
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_FOLDER_ID = "16qdCbG0P3cAR-m3P2xZ3q6mKY_QFW-i-"
 PRE_TRAINED_MODELS_DIR = os.path.join(SCRIPT_DIR, "pre_trained_models")
 REQUIREMENTS_FILE = os.path.join(SCRIPT_DIR, "requirements.txt")
+
 def install_requirements():
-    print(">>> Bước 1: Bắt đầu cài đặt các thư viện...")
-    if not os.path.isfile(REQUIREMENTS_FILE): sys.exit(f">>> [Lỗi] Không tìm thấy file: {REQUIREMENTS_FILE}")
+    print(">>> Bước 1: Bắt đầu cài đặt các thư viện từ requirements.txt...")
+    if not os.path.isfile(REQUIREMENTS_FILE):
+        sys.exit(f">>> [Lỗi] Không tìm thấy file requirements.txt tại: {REQUIREMENTS_FILE}")
     try:
         subprocess.run([sys.executable, "-m", "pip", "install", "-r", REQUIREMENTS_FILE], check=True, capture_output=True, text=True, encoding='utf-8')
-        print(">>> [Thành công] Đã cài đặt xong.")
-    except subprocess.CalledProcessError as e: sys.exit(f">>> [Lỗi] Cài đặt thất bại:\\n{e.stderr}")
+        print(">>> [Thành công] Đã cài đặt xong tất cả các thư viện.")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f">>> [Lỗi] Cài đặt thất bại:\\n{e.stderr}")
+
 def download_models():
-    print(f"\\n>>> Bước 2: Bắt đầu tải models...")
+    print(f"\\n>>> Bước 2: Bắt đầu tải models vào '{PRE_TRAINED_MODELS_DIR}'...")
     try:
         gdown.download_folder(id=MODEL_FOLDER_ID, output=PRE_TRAINED_MODELS_DIR, quiet=False, use_cookies=False)
         print(">>> [Thành công] Đã tải xong các model.")
-    except Exception as e: sys.exit(f">>> [Lỗi] Tải model thất bại: {e}")
+    except Exception as e:
+        sys.exit(f">>> [Lỗi] Tải model thất bại: {e}")
+
 def create_project_structure():
     print("\\n>>> Bước 3: Bắt đầu tạo cấu trúc thư mục...")
-    dirs = ["data/add_youknow/images","data/add_youknow/masks","data/mosaic_position/mosaiced_images","data/mosaic_position/mosaic_masks","data/clean_youknow/original_images","data/clean_youknow/mosaiced_images","data/clean_youknow/mosaic_masks","output","tmp","pre_trained_models","tool","script_AI/run","script_AI/train"]
-    for path in dirs: os.makedirs(os.path.join(SCRIPT_DIR, path), exist_ok=True)
+    dirs_to_create = [
+        "data/add_youknow/images", "data/add_youknow/masks",
+        "data/mosaic_position/mosaiced_images", "data/mosaic_position/mosaic_masks",
+        "data/clean_youknow/original_images", "data/clean_youknow/mosaiced_images", "data/clean_youknow/mosaic_masks",
+        "output", "tmp", "pre_trained_models",
+        "tool", "script_AI", "script_AI/run", "script_AI/train",
+    ]
+    for rel_path in dirs_to_create:
+        os.makedirs(os.path.join(SCRIPT_DIR, rel_path), exist_ok=True)
     print(">>> [Thành công] Cấu trúc thư mục đã sẵn sàng.")
+
 def main():
-    print("="*60); print(" BẮT ĐẦU CÀI ĐẶT MÔI TRƯỜNG DỰ ÁN"); print("="*60)
+    print("="*60); print(" BẮT ĐẦU CÀI ĐẶT MÔI TRƯỜNG DỰ ÁN UnOrCensored"); print("="*60)
     create_project_structure(); install_requirements(); download_models()
     print("\\n" + "="*60); print(" HOÀN TẤT! Môi trường đã được chuẩn bị."); print("="*60)
-if __name__ == "__main__": main()"""
+
+if __name__ == "__main__":
+    main()"""
     ),
     (
         "run.py",
@@ -65,8 +86,10 @@ def run_command(command):
         process = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8', cwd=SCRIPT_DIR)
         if process.stderr: sys.stderr.write(process.stderr)
         return json.loads(process.stdout)
-    except subprocess.CalledProcessError as e: sys.exit(f"[Lỗi Script] Lệnh thất bại.\\nLỗi:\\n{e.stderr}")
-    except Exception as e: sys.exit(f"[Lỗi Script] Lỗi không xác định: {e}")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"[Lỗi Script] Lệnh thất bại.\\nLỗi:\\n{e.stderr}")
+    except Exception as e:
+        sys.exit(f"[Lỗi Script] Lỗi không xác định: {e}")
 
 def handle_image(args, temp_dir):
     input_dir = os.path.join(temp_dir, "input"); output_dir = os.path.join(temp_dir, "output")
@@ -107,10 +130,14 @@ def handle_video(args, temp_dir):
         processed_chunks.append(run_command(proc_chunk_cmd).get("output_path"))
     list_file = os.path.join(temp_dir, "mergelist.txt")
     with open(list_file, "w", encoding='utf-8') as f:
-        for p in processed_chunks: f.write(f"file '{p.replace('\\\\', '/')}'\\n")
+        for p in processed_chunks:
+            # === SỬA LỖI f-string TẠI ĐÂY ===
+            clean_path = p.replace('\\\\', '/')
+            f.write(f"file '{clean_path}'\\n")
     final_path = os.path.join(args.folder_path or OUTPUT_DIR, f"final_{os.path.basename(args.file_path)}")
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
     run_command(["python", os.path.join(TOOL_DIR, "merge_video.py"), "--input_list_file", list_file, "--output", final_path])
+
 def main():
     parser = argparse.ArgumentParser(description="Script điều phối chính cho dự án UnOrCensored.")
     parser.add_argument('--file_path', required=True); parser.add_argument('--task_name', required=True, choices=['add_youknow', 'clean_youknow']); parser.add_argument('--folder_path')
@@ -128,7 +155,8 @@ if __name__ == "__main__": main()"""
     (
         "train.py",
         """import argparse, sys, os, datetime
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)); sys.path.append(SCRIPT_DIR)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(SCRIPT_DIR)
 from script_AI.model_loader import load_model
 from script_AI.train import train_segmentation, train_clean_youknow
 def main():
@@ -155,23 +183,6 @@ if __name__ == '__main__': main()"""
     ("script_AI/__init__.py", "# This file makes the 'script_AI' directory a Python package."),
     ("script_AI/train/__init__.py", "# This file makes the 'train' directory a Python package."),
     (
-        "script_AI/images_processing.py",
-        """import torch, cv2, numpy as np; from torchvision import transforms
-def load_image_to_tensor(path, size=(512,512), normalize=True):
-    img = cv2.imread(path); original_size = img.shape[:2]; img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    transform_list = [transforms.ToTensor(), transforms.Resize(size, antialias=True)]
-    if normalize: transform_list.append(transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]))
-    return transforms.Compose(transform_list)(img).unsqueeze(0), original_size
-def save_tensor_as_image(tensor, out_path, original_size, is_inpaint=False):
-    tensor = tensor.detach().cpu().squeeze(0); tensor = transforms.Resize(original_size, antialias=True)(tensor)
-    if is_inpaint: tensor = (tensor * 0.5) + 0.5
-    img_np = np.clip(tensor.permute(1, 2, 0).numpy() * 255, 0, 255).astype(np.uint8)
-    cv2.imwrite(out_path, cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR))
-def load_mask_to_tensor(path, size=(512,512)):
-    mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE); _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-    return transforms.Compose([transforms.ToTensor(), transforms.Resize(size, antialias=True)])(mask).unsqueeze(0)"""
-    ),
-    (
         "script_AI/model_loader.py",
         """import torch, os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -191,22 +202,18 @@ def load_model(name, pth, dev='cpu'):
 class ConvBlock(nn.Module):
     def __init__(self, i, o, k, s, p): super().__init__(); self.c=nn.Conv2d(i,o,k,s,p,bias=False); self.b=nn.BatchNorm2d(o); self.r=nn.ReLU(True)
     def forward(self, x): return self.r(self.b(self.c(x)))
-class ResBlock(nn.Module):
-    def __init__(self, i, o, s):
-        super().__init__(); self.c1=ConvBlock(i,o,3,s,1); self.c2=nn.Conv2d(o,o,3,1,1,bias=False); self.b2=nn.BatchNorm2d(o); self.s=nn.Sequential()
-        if s!=1 or i!=o: self.s=nn.Sequential(nn.Conv2d(i,o,1,s,bias=False),nn.BatchNorm2d(o))
-    def forward(self, x): return F.relu(self.c1(x) + self.s(x))
-class ARM(nn.Module):
+class AttentionRefinementModule(nn.Module):
     def __init__(self, i, o):
         super().__init__(); self.c=ConvBlock(i,o,3,1,1)
         self.a=nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Conv2d(o,o,1,bias=False), nn.BatchNorm2d(o), nn.Sigmoid())
     def forward(self, x): f=self.c(x); return f*self.a(f)
-class FFM(nn.Module):
-    def __init__(self, i, o):
+class FeatureFusionModule(nn.Module):
+    def __init__(self, i, o, **kwargs):
         super().__init__(); self.cb=ConvBlock(i,o,1,1,0)
         self.a=nn.Sequential(nn.AdaptiveAvgPool2d(1), ConvBlock(o,o//4,1,1,0), nn.Conv2d(o//4,o,1,bias=False), nn.Sigmoid())
     def forward(self, fsp, fcp):
-        f=self.cb(torch.cat([fsp,fcp],1)); return f + f*self.a(f)
+        f=self.cb(torch.cat([fsp,fcp],1)); atten=F.adaptive_avg_pool2d(f,1); atten=F.relu(self.cb.conv(atten)); atten=torch.sigmoid(self.cb.conv(atten))
+        return f + f*atten
 class ContextPath(nn.Module):
     def __init__(self):
         super().__init__(); resnet=torch.hub.load('pytorch/vision:v0.10.0','resnet18',pretrained=True,verbose=False)
@@ -214,55 +221,69 @@ class ContextPath(nn.Module):
         self.layer1=resnet.layer1; self.layer2=resnet.layer2; self.layer3=resnet.layer3; self.layer4=resnet.layer4
     def forward(self, x):
         x=self.relu(self.bn1(self.conv1(x))); x=self.maxpool(x)
-        x=self.layer1(x); x=self.layer2(x); feat8=self.layer3(x); feat16=self.layer4(feat8)
-        return feat8, feat16
+        x=self.layer1(x); x=self.layer2(x); feat8=self.layer3(x); feat16=self.layer4(feat8); return feat8, feat16
 class AddYouknowModel(nn.Module):
-    def __init__(self, n_classes=1):
-        super().__init__(); self.spatial_path=nn.Sequential(ConvBlock(3,64,7,2,3),ConvBlock(64,64,3,2,1),ConvBlock(64,128,1,1,0))
-        self.context_path=ContextPath()
-        self.attention_refinement_module1=ARM(256,128); self.attention_refinement_module2=ARM(512,128)
+    def __init__(self, n_classes=19):
+        super().__init__(); self.context_path=ContextPath(); self.spatial_path=nn.Sequential(ConvBlock(3,64,7,2,3),ConvBlock(64,64,3,2,1),ConvBlock(64,128,1,1,0))
+        self.attention_refinement_module1=AttentionRefinementModule(256,128); self.attention_refinement_module2=AttentionRefinementModule(512,128)
         self.supervision1=nn.Conv2d(128,n_classes,1); self.supervision2=nn.Conv2d(128,n_classes,1)
-        self.feature_fusion_module=FFM(256,n_classes)
+        self.feature_fusion_module=FeatureFusionModule(256,n_classes); self.conv=nn.Conv2d(256,n_classes,1)
     def forward(self, x):
-        H,W=x.size()[2:]; sp_out=self.spatial_path(x); feat8,feat16=self.context_path(x)
-        g_avg=F.adaptive_avg_pool2d(feat16,1); arm2_out=self.attention_refinement_module2(g_avg)
-        arm2_up=F.interpolate(arm2_out,size=feat8.shape[2:],mode='bilinear',align_corners=False)
+        H,W=x.size()[2:]; sp_out=self.spatial_path(x); feat8,feat16=self.context_path(x); g_avg=F.adaptive_avg_pool2d(feat16,1)
+        arm2_out=self.attention_refinement_module2(feat16); arm2_out=arm2_out+g_avg; arm2_up=F.interpolate(arm2_out,size=feat8.shape[2:],mode='bilinear',align_corners=False)
         arm1_out=self.attention_refinement_module1(feat8); fuse_out=arm1_out+arm2_up
         fuse_up=F.interpolate(fuse_out,size=sp_out.shape[2:],mode='bilinear',align_corners=False)
-        final=self.feature_fusion_module(sp_out,fuse_up)
-        return F.interpolate(final,size=(H,W),mode='bilinear',align_corners=False)
+        final_out=self.feature_fusion_module(sp_out,fuse_up)
+        return F.interpolate(self.conv(final_out),size=(H,W),mode='bilinear',align_corners=False)
 class PConv(nn.Module):
     def __init__(self, i, o, bn=True, sample='none', activ='relu', bias=False):
         super().__init__(); self.sampler=None
         if sample=='down':self.sampler=nn.MaxPool2d(2)
         elif sample=='up':self.sampler=nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
-        self.conv=nn.Conv2d(i,o,3,1,1,bias=bias);self.mask_conv=nn.Conv2d(i,o,3,1,1,bias=False)
-        torch.nn.init.constant_(self.mask_conv.weight,1.0);[p.requires_grad_(False) for p in self.mask_conv.parameters()]
-        self.bn=nn.BatchNorm2d(o) if bn else None;self.activ=nn.ReLU(True) if activ=='relu' else nn.LeakyReLU(0.2,True)
+        self.conv=nn.Conv2d(i,o,3,1,1,bias=bias); self.mask_conv=nn.Conv2d(i,o,3,1,1,bias=False); torch.nn.init.constant_(self.mask_conv.weight,1.0)
+        [p.requires_grad_(False) for p in self.mask_conv.parameters()]
+        self.bn=nn.BatchNorm2d(o) if bn else None; self.activ=nn.ReLU(True) if activ=='relu' else nn.LeakyReLU(0.2,True)
     def forward(self,x,m):
         if self.sampler:x,m=self.sampler(x),self.sampler(m)
         with torch.no_grad():mr=1/(self.mask_conv(m)+1e-8)
-        o=self.conv(x*m)*mr
+        o=self.conv(x*m)*mr;
         if self.bn:o=self.bn(o)
         return self.activ(o),m
 class CleanYouknowModel(nn.Module):
     def __init__(self):
-        super().__init__()
-        self.e1=PConv(4,64,bn=False,sample='down'); self.e2=PConv(64,128,sample='down'); self.e3=PConv(128,256,sample='down'); self.e4=PConv(256,512,sample='down');
+        super().__init__(); self.e1=PConv(4,64,bn=False,sample='down'); self.e2=PConv(64,128,sample='down'); self.e3=PConv(128,256,sample='down'); self.e4=PConv(256,512,sample='down');
         self.d1=PConv(512+256,256,activ='leaky',sample='up'); self.d2=PConv(256+128,128,activ='leaky',sample='up');
         self.d3=PConv(128+64,64,activ='leaky',sample='up'); self.d4=PConv(64+4,3,bn=False,activ='leaky'); self.final=nn.Conv2d(3,3,1)
     def forward(self,x,m):
-        e1,m1=self.e1(x,m);e2,m2=self.e2(e1,m1);e3,m3=self.e3(e2,m2);e4,m4=self.e4(e3,m3)
-        d1,_=self.d1(torch.cat([e4,e3],1),torch.cat([m4,m3],1));d2,_=self.d2(torch.cat([d1,e2],1),torch.cat([m2,m2],1))
-        d3,_=self.d3(torch.cat([d2,e1],1),torch.cat([m2,m1],1));d4,_=self.d4(torch.cat([d3,x],1),torch.cat([m1,mask],1))
-        return torch.tanh(self.final(d4))"""
+        e1,m1=self.e1(x,m);e2,m2=self.e2(e1,m1);e3,m3=self.e3(e2,m2);e4,m4=self.e4(e3,m3); d1,_=self.d1(torch.cat([e4,e3],1),torch.cat([m4,m3],1));d2,_=self.d2(torch.cat([d1,e2],1),torch.cat([m2,m2],1));d3,_=self.d3(torch.cat([d2,e1],1),torch.cat([m2,m1],1));d4,_=self.d4(torch.cat([d3,x],1),torch.cat([m1,mask],1)); return torch.tanh(self.final(d4))"""
+    ),
+    (
+        "script_AI/run/run_add_youknow.py",
+        """import argparse,json,sys,os,torch; from tqdm import tqdm
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from script_AI.model_loader import load_model
+from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
+def main():
+    p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);p.add_argument('--project_root',required=True);a=p.parse_args();
+    dev='cuda' if torch.cuda.is_available() else 'cpu'
+    model_path = os.path.join(a.project_root, 'pre_trained_models/add_youknow.pth')
+    model=load_model('add_youknow', model_path, dev)
+    os.makedirs(a.output_dir,exist_ok=True)
+    for fn in tqdm(os.listdir(a.input_dir),file=sys.stderr):
+        try:
+            t,s=load_image_to_tensor(os.path.join(a.input_dir,fn))
+            with torch.no_grad(): mt=torch.sigmoid(model(t.to(dev)))
+            save_tensor_as_image(mt,os.path.join(a.output_dir,fn),s)
+        except Exception as e: sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
+    print(json.dumps({'processed_frame_folder':os.path.abspath(a.output_dir)}))
+if __name__=="__main__":main()"""
     ),
 ]
 
 def create_project_files(base_dir="UnOrCensored_Project"):
     if os.path.exists(base_dir):
-        print(f"Thư mục '{base_dir}' đã tồn tại. Vui lòng xóa hoặc đổi tên và chạy lại.")
-        return
+        shutil.rmtree(base_dir)
+        print(f"Đã xóa thư mục cũ: '{base_dir}'")
     os.makedirs(base_dir)
     print(f"Đang tạo dự án trong thư mục: {os.path.abspath(base_dir)}")
     for file_path, file_content in ALL_FILES:
