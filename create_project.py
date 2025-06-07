@@ -168,7 +168,10 @@ def handle_video(args, temp_dir):
 
     list_file = os.path.join(temp_dir, "mergelist.txt")
     with open(list_file, "w", encoding='utf-8') as f:
-        for p in processed_chunks: f.write(f"file '{p.replace('\\\\', '/')}'\\n")
+        for p in processed_chunks:
+            # SỬA LỖI: Gán kết quả của replace cho biến mới trước khi dùng trong f-string
+            clean_path = p.replace('\\\\', '/')
+            f.write(f"file '{clean_path}'\\n")
         
     final_path = os.path.join(args.folder_path or OUTPUT_DIR, f"final_{os.path.basename(args.file_path)}")
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
@@ -239,15 +242,235 @@ def main():
 if __name__ == '__main__':
     main()"""
     ),
-    # Các file còn lại không thay đổi
-    ("tool/get_file_type.py", """import os, argparse, json, sys;def get_file_type(fp):vid=['.mp4','.avi','.mov','.mkv','.flv','.webm'];img=['.jpg','.jpeg','.png','.bmp','.gif','.tiff'];ext=os.path.splitext(fp)[1].lower();return {"file_type":"video"} if ext in vid else {"file_type":"image"} if ext in img else {"file_type":"unknown"};def main():p=argparse.ArgumentParser();p.add_argument('--input',required=True);a=p.parse_args();print(json.dumps(get_file_type(a.input)));if __name__=="__main__":main()"""),
-    ("tool/get_file_info.py", """import cv2, argparse, json, sys;def get_video_info(vp):cap=cv2.VideoCapture(vp);(lambda:None,lambda:cap.release())[not cap.isOpened()]();fps=cap.get(cv2.CAP_PROP_FPS);return {"metadata":{"fps":fps,"width":int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),"height":int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),"frame_count":int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),"duration_seconds":cap.get(cv2.CAP_PROP_FRAME_COUNT)/fps if fps>0 else 0,"codec_video":"".join([chr((int(cap.get(cv2.CAP_PROP_FOURCC))>>8*i)&255)for i in range(4)]).strip()}};def main():p=argparse.ArgumentParser();p.add_argument('--input',required=True);a=p.parse_args();print(json.dumps(get_video_info(a.input)));if __name__=="__main__":main()"""),
-    ("tool/cut_video.py", """import argparse,json,sys,os;from ffmpy import FFmpeg,FFRuntimeError;def cut_video(i,o,s,e):opts=['-c','copy'];(lambda:None,lambda:opts.extend(['-to',e]))[e and e!="00:00:00"]();ff=FFmpeg(global_options=['-y'],inputs={i:['-ss',s]},outputs={o:opts});(lambda:({"output_path":os.path.abspath(o)},None),lambda:({"error":"Lỗi FFmpeg","details":e},e))[isinstance(e,FFRuntimeError)]();try:ff.run(stderr=sys.stderr);return {"output_path":os.path.abspath(o)};except FFRuntimeError as e:return {"error":"Lỗi FFmpeg","details":e.stderr};def main():p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--output',required=True);p.add_argument('--start',required=True);p.add_argument('--end');a=p.parse_args();print(json.dumps(cut_video(a.input,a.output,a.start,a.end)));if __name__=="__main__":main()"""),
-    ("tool/duration_split.py", """import argparse,json,sys,os,psutil;from ffmpy import FFmpeg;def get_optimal_chunk_duration(vp,fps):tfp=os.path.join("tmp","temp_frame.png");ff=FFmpeg(global_options=['-y'],inputs={vp:['-ss','00:00:01']},outputs={tfp:['-vframes','1']});(lambda:({"optimal_chunk_duration":int(psutil.disk_usage('.').free*0.8/(os.path.getsize(tfp)*3*fps))},os.remove(tfp)),lambda:({"optimal_chunk_duration":300},None))[os.path.exists(tfp)];try:ff.run();return get_optimal_chunk_duration(vp,fps);except:return {"optimal_chunk_duration":300};def main():p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--fps',type=float,required=True);a=p.parse_args();print(json.dumps(get_optimal_chunk_duration(a.input,a.fps)));if __name__=="__main__":main()"""),
-    ("tool/split_video.py", """import argparse,json,sys,os;from ffmpy import FFmpeg;def split_video(i,o,d):os.makedirs(o,exist_ok=True);op=os.path.join(o,f"chunk_%05d{os.path.splitext(i)[1]}");ff=FFmpeg(global_options=['-y'],inputs={i:None},outputs={op:['-c','copy','-map','0','-segment_time',str(d),'-f','segment','-reset_timestamps','1']});(lambda:({"chunk_paths":sorted([os.path.abspath(os.path.join(o,f))for f in os.listdir(o) if f.startswith('chunk_')])},None),lambda:({"error":"Lỗi FFmpeg","details":str(e)},e))[isinstance(e,Exception)];try:ff.run(stderr=sys.stderr);return split_video(i,o,d);except Exception as e:return {"error":"Lỗi FFmpeg","details":str(e)};def main():p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--duration',type=int,required=True);p.add_argument('--output_dir',required=True);a=p.parse_args();print(json.dumps(split_video(a.input,a.output_dir,a.duration)));if __name__=="__main__":main()"""),
-    ("tool/video_to_frames.py", """import argparse,json,sys,os;from ffmpy import FFmpeg;def video_to_frames(i,o):os.makedirs(o,exist_ok=True);fp=os.path.join(o,'frames');os.makedirs(fp,exist_ok=True);ap=os.path.join(o,"audio.aac");frp=os.path.join(fp,'%08d.png');ff_f=FFmpeg(global_options=['-y'],inputs={i:None},outputs={frp:['-qscale:v','2']});ff_a=FFmpeg(global_options=['-y'],inputs={i:None},outputs={ap:['-vn','-acodec','copy']});(lambda:({"frame_folder":os.path.abspath(fp),"audio_path":os.path.abspath(ap) if os.path.exists(ap) else None},None),lambda:({"error":"Lỗi FFmpeg","details":str(e)},e))[isinstance(e,Exception)];try:ff_f.run(stderr=sys.stderr);(lambda:None,lambda:ff_a.run(stderr=sys.stderr)) [not isinstance(e,Exception)];return video_to_frames(i,o);except Exception as e:return {"error":"Lỗi FFmpeg","details":str(e)};def main():p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args();print(json.dumps(video_to_frames(a.input,a.output_dir)));if __name__=="__main__":main()"""),
-    ("tool/frames_to_video.py", """import argparse,json,sys,os;from ffmpy import FFmpeg;def frames_to_video(ff,ap,mj,op):try:fps=json.loads(mj).get('fps')except:return{"error":"JSON metadata không hợp lệ"};(lambda:None,lambda:sys.exit(print(json.dumps({"error":"Không tìm thấy fps"}))))[not fps]();frp=os.path.join(ff,'%08d.png');ifs={frp:['-framerate',str(fps)]};(lambda:None,lambda:ifs.update({ap:None}))[ap and os.path.exists(ap)]();opts=['-c:v','libx264','-pix_fmt','yuv420p'];(lambda:None,lambda:opts.extend(['-c:a','aac','-shortest']))[ap and os.path.exists(ap)]();f=FFmpeg(global_options=['-y'],inputs=ifs,outputs={op:opts});(lambda:({"output_path":os.path.abspath(op)},None),lambda:({"error":"Lỗi FFmpeg","details":str(e)},e))[isinstance(e,Exception)];try:f.run(stderr=sys.stderr);return {"output_path":os.path.abspath(op)};except Exception as e:return{"error":"Lỗi FFmpeg","details":str(e)};def main():p=argparse.ArgumentParser();p.add_argument('--frame_folder',required=True);p.add_argument('--audio_path');p.add_argument('--metadata_json',required=True);p.add_argument('--output',required=True);a=p.parse_args();print(json.dumps(frames_to_video(a.frame_folder,a.audio_path,a.metadata_json,a.output)));if __name__=="__main__":main()"""),
-    ("tool/merge_video.py", """import argparse,json,sys,os;from ffmpy import FFmpeg;def merge_videos(ilf,op):ff=FFmpeg(global_options=['-y'],inputs={ilf:['-f','concat','-safe','0']},outputs={op:['-c','copy']});(lambda:({"final_video_path":os.path.abspath(op)},None),lambda:({"error":"Lỗi FFmpeg","details":str(e)},e))[isinstance(e,Exception)];try:ff.run(stderr=sys.stderr);return {"final_video_path":os.path.abspath(op)};except Exception as e:return{"error":"Lỗi FFmpeg","details":str(e)};def main():p=argparse.ArgumentParser();p.add_argument('--input_list_file',required=True);p.add_argument('--output',required=True);a=p.parse_args();print(json.dumps(merge_videos(a.input_list_file,a.output)));if __name__=="__main__":main()"""),
+    # --- tool/ ---
+    ("tool/get_file_type.py", """# -*- coding: utf-8 -*-
+import os, argparse, json, sys
+
+def get_file_type(file_path):
+    video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm']
+    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in video_extensions: return {"file_type": "video"}
+    if ext in image_extensions: return {"file_type": "image"}
+    return {"file_type": "unknown"}
+
+def main():
+    parser = argparse.ArgumentParser(description="Xác định loại file.")
+    parser.add_argument('--input', required=True, help="Đường dẫn file.")
+    args = parser.parse_args()
+    print(json.dumps(get_file_type(args.input)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/get_file_info.py", """# -*- coding: utf-8 -*-
+import cv2, argparse, json, sys
+
+def get_video_info(video_path):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return {"error": f"Không thể mở video: {video_path}"}
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        metadata = {
+            "fps": fps,
+            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            "duration_seconds": cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps if fps > 0 else 0,
+            "codec_video": "".join([chr((int(cap.get(cv2.CAP_PROP_FOURCC)) >> 8 * i) & 0xFF) for i in range(4)]).strip()
+        }
+        return {"metadata": metadata}
+    finally:
+        cap.release()
+
+def main():
+    parser = argparse.ArgumentParser(description="Trích xuất metadata video.")
+    parser.add_argument('--input', required=True, help="Đường dẫn video.")
+    args = parser.parse_args()
+    print(json.dumps(get_video_info(args.input)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/cut_video.py", """# -*- coding: utf-8 -*-
+import argparse,json,sys,os
+from ffmpy import FFmpeg, FFRuntimeError
+
+def cut_video(input_path, output_path, start_time, end_time):
+    output_options = ['-c', 'copy']
+    if end_time and end_time != "00:00:00":
+        output_options.extend(['-to', end_time])
+    ff = FFmpeg(global_options=['-y'], inputs={input_path: ['-ss', start_time]}, outputs={output_path: output_options})
+    try:
+        ff.run(stdout=sys.stderr, stderr=sys.stderr)
+        return {"output_path": os.path.abspath(output_path)}
+    except FFRuntimeError as e:
+        return {"error": "Lỗi FFmpeg khi cắt video", "details": e.stderr}
+
+def main():
+    parser = argparse.ArgumentParser(description="Cắt video theo thời gian.")
+    parser.add_argument('--input', required=True)
+    parser.add_argument('--output', required=True)
+    parser.add_argument('--start', required=True)
+    parser.add_argument('--end', default=None)
+    args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    print(json.dumps(cut_video(args.input, args.output, args.start, args.end)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/duration_split.py", """# -*- coding: utf-8 -*-
+import argparse,json,sys,os,psutil
+from ffmpy import FFmpeg
+
+def get_optimal_chunk_duration(video_path, fps):
+    temp_dir = "tmp"
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_frame_path = os.path.join(temp_dir, f"temp_frame_{os.path.basename(video_path)}.png")
+    ff = FFmpeg(global_options=['-y'], inputs={video_path:['-ss','00:00:01']}, outputs={temp_frame_path:['-vframes','1']})
+    try:
+        ff.run(stderr=sys.stderr)
+        exact_frame_size = os.path.getsize(temp_frame_path)
+        data_rate = exact_frame_size * 3 * fps
+        usable_space = psutil.disk_usage(os.path.abspath('.')).free * 0.8
+        if data_rate == 0: return {"optimal_chunk_duration": 300}
+        return {"optimal_chunk_duration": int(usable_space / data_rate)}
+    except Exception:
+        return {"optimal_chunk_duration": 300} # Fallback an toàn
+    finally:
+        if os.path.exists(temp_frame_path):
+            os.remove(temp_frame_path)
+
+def main():
+    parser = argparse.ArgumentParser(description="Tính thời lượng chunk tối ưu.")
+    parser.add_argument('--input', required=True)
+    parser.add_argument('--fps', type=float, required=True)
+    args = parser.parse_args()
+    print(json.dumps(get_optimal_chunk_duration(args.input, args.fps)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/split_video.py", """# -*- coding: utf-8 -*-
+import argparse,json,sys,os
+from ffmpy import FFmpeg, FFRuntimeError
+
+def split_video(input_path, output_dir, duration):
+    os.makedirs(output_dir, exist_ok=True)
+    output_pattern = os.path.join(output_dir, f"chunk_%05d{os.path.splitext(input_path)[1]}")
+    ff = FFmpeg(global_options=['-y'], inputs={input_path: None}, outputs={output_pattern: ['-c', 'copy', '-map', '0', '-segment_time', str(duration), '-f', 'segment', '-reset_timestamps', '1']})
+    try:
+        ff.run(stdout=sys.stderr, stderr=sys.stderr)
+        chunk_files = sorted([os.path.abspath(os.path.join(output_dir, f)) for f in os.listdir(output_dir) if f.startswith('chunk_')])
+        return {"chunk_paths": chunk_files}
+    except FFRuntimeError as e:
+        return {"error": "Lỗi FFmpeg khi chia video", "details": e.stderr}
+
+def main():
+    parser = argparse.ArgumentParser(description="Chia video thành chunks.")
+    parser.add_argument('--input', required=True)
+    parser.add_argument('--duration', type=int, required=True)
+    parser.add_argument('--output_dir', required=True)
+    args = parser.parse_args()
+    print(json.dumps(split_video(args.input, args.output_dir, args.duration)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/video_to_frames.py", """# -*- coding: utf-8 -*-
+import argparse,json,sys,os
+from ffmpy import FFmpeg, FFRuntimeError
+
+def video_to_frames(input_path, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    frame_folder_path = os.path.join(output_dir, 'frames')
+    os.makedirs(frame_folder_path, exist_ok=True)
+    audio_path = os.path.join(output_dir, "audio.aac")
+    frame_pattern = os.path.join(frame_folder_path, '%08d.png')
+    
+    ff_frames = FFmpeg(global_options=['-y'], inputs={input_path: None}, outputs={frame_pattern: ['-qscale:v', '2']})
+    ff_audio = FFmpeg(global_options=['-y'], inputs={input_path: None}, outputs={audio_path: ['-vn', '-acodec', 'copy']})
+    
+    try:
+        ff_frames.run(stdout=sys.stderr, stderr=sys.stderr)
+        audio_result_path = None
+        try:
+            ff_audio.run(stdout=sys.stderr, stderr=sys.stderr)
+            audio_result_path = os.path.abspath(audio_path)
+        except FFRuntimeError:
+            sys.stderr.write("Lưu ý: Không thể trích xuất audio.\\n")
+        return {"frame_folder": os.path.abspath(frame_folder_path), "audio_path": audio_result_path}
+    except FFRuntimeError as e:
+        return {"error": "Lỗi FFmpeg khi trích xuất frames", "details": e.stderr}
+
+def main():
+    parser = argparse.ArgumentParser(description="Trích xuất frames và audio.")
+    parser.add_argument('--input', required=True)
+    parser.add_argument('--output_dir', required=True)
+    args = parser.parse_args()
+    print(json.dumps(video_to_frames(args.input, args.output_dir)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/frames_to_video.py", """# -*- coding: utf-8 -*-
+import argparse,json,sys,os
+from ffmpy import FFmpeg, FFRuntimeError
+
+def frames_to_video(frame_folder, audio_path, metadata_json, output_path):
+    try:
+        fps = json.loads(metadata_json).get('fps')
+    except json.JSONDecodeError:
+        return {"error": "JSON metadata không hợp lệ"}
+    if not fps:
+        return {"error": "Không tìm thấy 'fps' trong metadata JSON."}
+
+    frame_pattern = os.path.join(frame_folder, '%08d.png')
+    input_files = {frame_pattern: ['-framerate', str(fps)]}
+    if audio_path and os.path.exists(audio_path):
+        input_files[audio_path] = None
+    
+    output_options = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p']
+    if audio_path and os.path.exists(audio_path):
+        output_options.extend(['-c:a', 'aac', '-shortest'])
+    
+    ff = FFmpeg(global_options=['-y'], inputs=input_files, outputs={output_path: output_options})
+    try:
+        ff.run(stdout=sys.stderr, stderr=sys.stderr)
+        return {"output_path": os.path.abspath(output_path)}
+    except FFRuntimeError as e:
+        return {"error": "Lỗi FFmpeg khi ghép frames", "details": e.stderr}
+
+def main():
+    parser = argparse.ArgumentParser(description="Ghép frames thành video.")
+    parser.add_argument('--frame_folder', required=True)
+    parser.add_argument('--audio_path', default=None)
+    parser.add_argument('--metadata_json', required=True)
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    print(json.dumps(frames_to_video(args.frame_folder, args.audio_path, args.metadata_json, args.output)))
+
+if __name__ == "__main__":
+    main()"""),
+    ("tool/merge_video.py", """# -*- coding: utf-8 -*-
+import argparse,json,sys,os
+from ffmpy import FFmpeg, FFRuntimeError
+
+def merge_videos(input_list_file, output_path):
+    ff = FFmpeg(global_options=['-y'], inputs={input_list_file: ['-f', 'concat', '-safe', '0']}, outputs={output_path: ['-c', 'copy']})
+    try:
+        ff.run(stdout=sys.stderr, stderr=sys.stderr)
+        return {"final_video_path": os.path.abspath(output_path)}
+    except FFRuntimeError as e:
+        return {"error": "Lỗi FFmpeg khi nối video", "details": e.stderr}
+
+def main():
+    parser = argparse.ArgumentParser(description="Nối video từ file danh sách.")
+    parser.add_argument('--input_list_file', required=True)
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    print(json.dumps(merge_videos(args.input_list_file, args.output)))
+
+if __name__ == "__main__":
+    main()"""),
     ("script_AI/images_processing.py", """# -*- coding: utf-8 -*-
 import torch, cv2, numpy as np
 from torchvision import transforms
@@ -273,8 +496,12 @@ def load_mask_to_tensor(p,target_size=(512,512)):
     return transforms.Compose([transforms.ToTensor(),transforms.Resize(target_size,antialias=True)])(m).unsqueeze(0)"""),
     ("script_AI/model_loader.py", """# -*- coding: utf-8 -*-
 import torch, os, sys
+# Đảm bảo có thể import từ các thư mục khác
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+
 try: from script_AI.models import AddYouknowModel, CleanYouknowModel
-except: from models import AddYouknowModel, CleanYouknowModel
+except ImportError: from models import AddYouknowModel, CleanYouknowModel
 def load_model(name, pth, dev='cpu'):
     sys.stderr.write(f"Đang tải model '{name}'...\\n")
     if name in ['add_youknow','mosaic_position']: model=AddYouknowModel(num_classes=1)
@@ -330,7 +557,7 @@ class CleanYouknowModel(nn.Module):
     ("script_AI/run/run_add_youknow.py", """# -*- coding: utf-8 -*-
 import argparse,json,sys,os,torch; from tqdm import tqdm; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
 def process(indir,outdir,dev):
-    try: model=load_model('add_youknow','pre_trained_models/add_youknow.pth',dev)
+    try: model=load_model('add_youknow',os.path.join(os.path.dirname(sys.path[0]),'pre_trained_models/add_youknow.pth'),dev)
     except Exception as e: return {"error":f"Tải model thất bại: {e}"}
     os.makedirs(outdir,exist_ok=True)
     files=[f for f in os.listdir(indir) if f.lower().endswith(('.png','.jpg'))]
@@ -348,7 +575,7 @@ if __name__=="__main__": main()"""),
     ("script_AI/run/run_mosaic_position.py", """# -*- coding: utf-8 -*-
 import argparse,json,sys,os,torch; from tqdm import tqdm; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
 def process(indir,outdir,dev):
-    try: model=load_model('mosaic_position','pre_trained_models/mosaic_position.pth',dev)
+    try: model=load_model('mosaic_position',os.path.join(os.path.dirname(sys.path[0]),'pre_trained_models/mosaic_position.pth'),dev)
     except Exception as e: return {"error":f"Tải model thất bại: {e}"}
     os.makedirs(outdir,exist_ok=True)
     files=[f for f in os.listdir(indir) if f.lower().endswith(('.png','.jpg'))]
@@ -366,7 +593,7 @@ if __name__=="__main__": main()"""),
     ("script_AI/run/run_clean_youknow.py", """# -*- coding: utf-8 -*-
 import argparse,json,sys,os,torch; from tqdm import tqdm; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor,save_tensor_as_image
 def process(imgdir,maskdir,outdir,dev):
-    try: model=load_model('clean_youknow','pre_trained_models/clean_youknow.pth',dev)
+    try: model=load_model('clean_youknow',os.path.join(os.path.dirname(sys.path[0]),'pre_trained_models/clean_youknow.pth'),dev)
     except Exception as e: return {"error":f"Tải model thất bại: {e}"}
     os.makedirs(outdir,exist_ok=True)
     files=[f for f in os.listdir(imgdir) if f.lower().endswith(('.png','.jpg'))]
@@ -387,7 +614,6 @@ def main():
     p=argparse.ArgumentParser(); p.add_argument('--input_dir',required=True); p.add_argument('--mask_dir',required=True); p.add_argument('--output_dir',required=True); a=p.parse_args();
     print(json.dumps(process(a.input_dir,a.mask_dir,a.output_dir,'cuda' if torch.cuda.is_available() else 'cpu')))
 if __name__=="__main__": main()"""),
-    # --- script_AI/train/ ---
     ("script_AI/train/train_segmentation.py", """# -*- coding: utf-8 -*-
 import torch,os,sys; import torch.nn as nn; import torch.optim as optim; from torch.utils.data import Dataset,DataLoader; from tqdm import tqdm; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor
 class SegDS(Dataset):
@@ -499,6 +725,4 @@ def create_project_files(base_dir="UnOrCensored_Project"):
 
 if __name__ == "__main__":
     create_project_files()
-
-
 
