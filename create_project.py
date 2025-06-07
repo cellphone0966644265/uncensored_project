@@ -5,7 +5,6 @@ import shutil
 import subprocess
 
 ALL_FILES = [
-    # --- File gốc (Không thay đổi) ---
     (
         "requirements.txt",
         """gdown==5.2.0
@@ -140,7 +139,10 @@ def handle_video(args, temp_dir):
 
     list_file = os.path.join(temp_dir, "mergelist.txt")
     with open(list_file, "w", encoding='utf-8') as f:
-        for p in processed_chunks: f.write(f"file '{p.replace('\\\\', '/')}'\\n")
+        for p in processed_chunks:
+            # === SỬA LỖI TẠI ĐÂY ===
+            clean_path = p.replace('\\\\', '/')
+            f.write(f"file '{clean_path}'\\n")
         
     final_path = os.path.join(args.folder_path or OUTPUT_DIR, f"final_{os.path.basename(args.file_path)}")
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
@@ -186,7 +188,7 @@ def main():
     sys.stderr.write(f"\\nHoàn tất! Model đã tinh chỉnh được lưu tại: {save_path}\\n")
 if __name__ == '__main__': main()"""
     ),
-    # Các file trong tool/ và READMEs không thay đổi
+    # --- tool/ ---
     ("tool/get_file_type.py", """import os, argparse, json;p=argparse.ArgumentParser();p.add_argument('--input',required=True);a=p.parse_args();v=['.mp4','.avi','.mov'];i=['.jpg','.jpeg','.png'];e=os.path.splitext(a.input)[1].lower();print(json.dumps({'file_type':'video' if e in v else 'image' if e in i else 'unknown'}))"""),
     ("tool/get_file_info.py", "import cv2,argparse,json;p=argparse.ArgumentParser();p.add_argument('--input',required=True);a=p.parse_args();cap=cv2.VideoCapture(a.input);f=cap.get(cv2.CAP_PROP_FPS);print(json.dumps({'metadata':{'fps':f,'width':int(cap.get(3)),'height':int(cap.get(4)),'frame_count':int(cap.get(7)),'duration_seconds':cap.get(7)/f if f>0 else 0}}));cap.release()"),
     ("tool/cut_video.py", "import argparse,json,sys,os;from ffmpy import FFmpeg;p=argparse.ArgumentParser();p.add_argument('--input',required=True);p.add_argument('--output',required=True);p.add_argument('--start',required=True);p.add_argument('--end',default=None);a=p.parse_args();os.makedirs(os.path.dirname(a.output),exist_ok=True);o=['-c','copy'];(lambda:o.extend(['-to',a.end]))[a.end]();ff=FFmpeg(global_options=['-y'],inputs={a.input:['-ss',a.start]},outputs={a.output:o});ff.run(stderr=sys.stderr);print(json.dumps({'output_path':os.path.abspath(a.output)}))"),
@@ -196,132 +198,11 @@ if __name__ == '__main__': main()"""
     ("tool/frames_to_video.py", "import argparse,json,sys,os;from ffmpy import FFmpeg;p=argparse.ArgumentParser();p.add_argument('--frame_folder',required=True);p.add_argument('--audio_path',default=None);p.add_argument('--metadata_json',required=True);p.add_argument('--output',required=True);a=p.parse_args();fps=json.loads(a.metadata_json).get('fps');os.makedirs(os.path.dirname(a.output),exist_ok=True);pt=os.path.join(a.frame_folder,'%08d.png');i={pt:['-framerate',str(fps)]};if a.audio_path and os.path.exists(a.audio_path):i[a.audio_path]=None;o=['-c:v','libx264','-pix_fmt','yuv420p'];if a.audio_path and os.path.exists(a.audio_path):o.extend(['-c:a','aac','-shortest']);ff=FFmpeg(global_options=['-y'],inputs=i,outputs={a.output:o});ff.run(stderr=sys.stderr);print(json.dumps({'output_path':os.path.abspath(a.output)}))"),
     ("tool/merge_video.py", "import argparse,json,sys,os;from ffmpy import FFmpeg;p=argparse.ArgumentParser();p.add_argument('--input_list_file',required=True);p.add_argument('--output',required=True);a=p.parse_args();os.makedirs(os.path.dirname(a.output),exist_ok=True);ff=FFmpeg(global_options=['-y'],inputs={a.input_list_file:['-f','concat','-safe','0']},outputs={a.output:['-c','copy']});ff.run(stderr=sys.stderr);print(json.dumps({'final_video_path':os.path.abspath(a.output)}))"),
     ("script_AI/images_processing.py", "import torch,cv2,numpy as np;from torchvision import transforms;def l_i_t(p,s=(512,512),n=True):i=cv2.imread(p);o=i.shape[:2];i=cv2.cvtColor(i,cv2.COLOR_BGR2RGB);tl=[transforms.ToTensor(),transforms.Resize(s,antialias=True)];(lambda:tl.append(transforms.Normalize(mean=[.485,.456,.406],std=[.229,.224,.225])))[n]();return transforms.Compose(tl)(i).unsqueeze(0),o;def s_t_a_i(t,op,o,i=False):t=t.detach().cpu().squeeze(0);t=transforms.Resize(o,antialias=True)(t);if i:t=t*.5+.5;img=np.clip(t.permute(1,2,0).numpy()*255,0,255).astype(np.uint8);cv2.imwrite(op,cv2.cvtColor(img,cv2.COLOR_RGB2BGR));def l_m_t(p,s=(512,512)):m=cv2.imread(p,cv2.IMREAD_GRAYSCALE);_,m=cv2.threshold(m,127,255,cv2.THRESH_BINARY);return transforms.Compose([transforms.ToTensor(),transforms.Resize(s,antialias=True)])(m).unsqueeze(0)"),
-    (
-        "script_AI/model_loader.py",
-        """import torch, os, sys
-# Thêm thư mục gốc của dự án vào sys.path để đảm bảo import hoạt động
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(PROJECT_ROOT)
-from script_AI.models import AddYouknowModel, CleanYouknowModel
-
-def load_model(name, pth, dev='cpu'):
-    if name in ['add_youknow', 'mosaic_position']: model=AddYouknowModel()
-    elif name == 'clean_youknow': model=CleanYouknowModel()
-    else: raise ValueError(f"Model không hỗ trợ: {name}")
-    
-    sd=torch.load(pth, map_location=torch.device(dev))
-    if 'state_dict' in sd: sd=sd['state_dict']
-    
-    model.load_state_dict({k.replace('module.',''):v for k,v in sd.items()})
-    return model.to(dev).eval()
-"""
-    ),
-    (
-        "script_AI/models.py",
-        """import torch, torch.nn as nn, torch.nn.functional as F
-class ResNet18(nn.Module):
-    def __init__(self):
-        super().__init__()
-        resnet = torch.hub.load('pytorch/vision:v0.10.0','resnet18', pretrained=True)
-        self.features = nn.Sequential(*list(resnet.children())[:-2])
-    def forward(self, x):
-        return self.features(x)
-
-class AddYouknowModel(nn.Module):
-    def __init__(self, n_class=1):
-        super().__init__()
-        self.backbone = ResNet18()
-        self.decoder = nn.Sequential(
-            nn.Conv2d(512, 256, 3, padding=1), nn.ReLU(True), nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(256, 128, 3, padding=1), nn.ReLU(True), nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(128, 64, 3, padding=1), nn.ReLU(True), nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(64, 32, 3, padding=1), nn.ReLU(True), nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(32, n_class, 3, padding=1)
-        )
-    def forward(self, x):
-        return F.interpolate(self.decoder(self.backbone(x)), size=x.shape[2:], mode='bilinear', align_corners=True)
-
-class PConv(nn.Module):
-    def __init__(self, in_ch, out_ch, bn=True, sample='none', activ='relu', bias=False):
-        super().__init__()
-        self.sample = sample
-        if sample == 'down': self.sampler = nn.MaxPool2d(2)
-        elif sample == 'up': self.sampler = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        self.conv = nn.Conv2d(in_ch, out_ch, 3, 1, 1, bias=bias)
-        self.mask_conv = nn.Conv2d(in_ch, out_ch, 3, 1, 1, bias=False)
-        torch.nn.init.constant_(self.mask_conv.weight, 1.0)
-        for param in self.mask_conv.parameters(): param.requires_grad = False
-        self.bn = nn.BatchNorm2d(out_ch) if bn else None
-        self.activ = nn.ReLU(True) if activ == 'relu' else nn.LeakyReLU(0.2, True)
-
-    def forward(self, x, mask):
-        if hasattr(self, 'sampler'): x, mask = self.sampler(x), self.sampler(mask)
-        with torch.no_grad():
-            mask_ratio = 512*512 / (self.mask_conv(mask) + 1e-8)
-        output = self.conv(x * mask) * mask_ratio
-        if self.bn: output = self.bn(output)
-        return self.activ(output), mask
-
-class CleanYouknowModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.enc1 = PConv(4, 64, bn=False, sample='down'); self.enc2 = PConv(64, 128, sample='down'); self.enc3 = PConv(128, 256, sample='down'); self.enc4 = PConv(256, 512, sample='down')
-        self.dec1 = PConv(512+256, 256, activ='leaky', sample='up'); self.dec2 = PConv(256+128, 128, activ='leaky', sample='up')
-        self.dec3 = PConv(128+64, 64, activ='leaky', sample='up'); self.dec4 = PConv(64+4, 3, bn=False, activ='leaky')
-        self.final = nn.Conv2d(3, 3, 1)
-
-    def forward(self, x, mask):
-        e1,m1=self.enc1(x,mask); e2,m2=self.enc2(e1,m1); e3,m3=self.e3(e2,m2); e4,m4=self.e4(e3,m3)
-        d1,_=self.dec1(torch.cat([e4,e3],1),torch.cat([m4,m3],1)); d2,_=self.dec2(torch.cat([d1,e2],1),torch.cat([m2,m2],1))
-        d3,_=self.dec3(torch.cat([d2,e1],1),torch.cat([m2,m1],1)); d4,_=self.dec4(torch.cat([d3,x],1),torch.cat([m1,mask],1))
-        return torch.tanh(self.final(d4))"""
-    ),
-    (
-        "script_AI/run/run_add_youknow.py",
-        """import argparse,json,sys,os,torch;from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
-def main():
-    p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args(); dev='cuda' if torch.cuda.is_available() else 'cpu'
-    model=load_model('add_youknow',os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)),'pre_trained_models/add_youknow.pth'),dev)
-    os.makedirs(a.output_dir,exist_ok=True)
-    for fn in tqdm(os.listdir(a.input_dir),file=sys.stderr):
-        try: t,s=load_image_to_tensor(os.path.join(a.input_dir,fn)); mt=torch.sigmoid(model(t.to(dev))); save_tensor_as_image(mt,os.path.join(a.output_dir,fn),s)
-        except Exception as e:sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
-    print(json.dumps({"processed_frame_folder":os.path.abspath(a.output_dir)}))
-if __name__=="__main__":main()"""
-    ),
-    (
-        "script_AI/run/run_mosaic_position.py",
-        """import argparse,json,sys,os,torch;from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image
-def main():
-    p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args(); dev='cuda' if torch.cuda.is_available() else 'cpu'
-    model=load_model('mosaic_position',os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)),'pre_trained_models/mosaic_position.pth'),dev)
-    os.makedirs(a.output_dir,exist_ok=True)
-    for fn in tqdm(os.listdir(a.input_dir),file=sys.stderr):
-        try: t,s=load_image_to_tensor(os.path.join(a.input_dir,fn)); mt=torch.sigmoid(model(t.to(dev))); save_tensor_as_image(mt,os.path.join(a.output_dir,fn),s)
-        except Exception as e:sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
-    print(json.dumps({"processed_frame_folder":os.path.abspath(a.output_dir)}))
-if __name__=="__main__":main()"""
-    ),
-    (
-        "script_AI/run/run_clean_youknow.py",
-        """import argparse,json,sys,os,torch;from tqdm import tqdm; SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__)); sys.path.append(os.path.dirname(SCRIPT_DIR)); from script_AI.model_loader import load_model; from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor,save_tensor_as_image
-def main():
-    p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--mask_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args(); dev='cuda' if torch.cuda.is_available() else 'cpu'
-    model=load_model('clean_youknow',os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)),'pre_trained_models/clean_youknow.pth'),dev)
-    os.makedirs(a.output_dir,exist_ok=True)
-    for fn in tqdm(os.listdir(a.input_dir),file=sys.stderr):
-        mp=os.path.join(a.mask_dir,fn);
-        if not os.path.exists(mp):continue
-        try:
-            it,s=load_image_to_tensor(os.path.join(a.input_dir,fn),norm=False);it_norm=it*2-1
-            mt=load_mask_to_tensor(mp);it_norm,mt=it_norm.to(dev),mt.to(dev)
-            with torch.no_grad():out=model(torch.cat((it_norm,mt),dim=1),mt)
-            final=(out*mt)+(it_norm*(1-mt))
-            save_tensor_as_image(final,os.path.join(a.output_dir,fn),s,is_inpaint=True)
-        except Exception as e:sys.stderr.write(f"Lỗi file {fn}: {e}\\n")
-    print(json.dumps({"processed_frame_folder":os.path.abspath(a.output_dir)}))
-if __name__=="__main__":main()"""
-    ),
+    ("script_AI/model_loader.py", "import torch,os,sys;s=os.path.dirname(os.path.abspath(__file__));sys.path.append(os.path.dirname(s));from script_AI.models import AddYouknowModel,CleanYouknowModel;def load_model(n,p,d='cpu'):m=AddYouknowModel()if n in['add_youknow','mosaic_position']else CleanYouknowModel()if n=='clean_youknow'else exit(f'Model không hỗ trợ:{n}');sd=torch.load(p,map_location=torch.device(d));sd=sd['state_dict']if'state_dict'in sd else sd;m.load_state_dict({k.replace('module.',''):v for k,v in sd.items()});return m.to(d).eval()"),
+    ("script_AI/models.py", "import torch,torch.nn as nn,torch.nn.functional as F;class R(nn.Module):def __init__(s):super().__init__();r=torch.hub.load('pytorch/vision:v0.10.0','resnet18',True);s.f=nn.Sequential(*list(r.children())[:-2]);def forward(s,x):return s.f(x);class A(nn.Module):def __init__(s,n=1):super().__init__();s.b=R();s.d=nn.Sequential(nn.Conv2d(512,256,3,padding=1),nn.ReLU(True),nn.Upsample(scale_factor=2),nn.Conv2d(256,128,3,padding=1),nn.ReLU(True),nn.Upsample(scale_factor=2),nn.Conv2d(128,64,3,padding=1),nn.ReLU(True),nn.Upsample(scale_factor=2),nn.Conv2d(64,32,3,padding=1),nn.ReLU(True),nn.Upsample(scale_factor=2),nn.Conv2d(32,n,3,padding=1));def forward(s,x):return F.interpolate(s.d(s.b(x)),size=x.shape[2:],mode='bilinear',align_corners=True);class P(nn.Module):def __init__(s,i,o,b=True,p='none',a='relu',c=False):super().__init__();s.p=None;if p=='down':s.p=nn.MaxPool2d(2,2);elif p=='up':s.p=nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True);s.c=nn.Conv2d(i,o,3,1,1,bias=c);s.m=nn.Conv2d(i,o,3,1,1,bias=False);torch.nn.init.constant_(s.m.weight,1.0);for p in s.m.parameters():p.requires_grad=False;s.b=nn.BatchNorm2d(o)if b else None;s.a=nn.ReLU(True)if a=='relu'else nn.LeakyReLU(.2,True);def forward(s,x,m):if s.p:x,m=s.p(x),s.p(m);with torch.no_grad():mr=1/(s.m(m)+1e-8);o=s.c(x*m)*mr;if s.b:o=s.b(o);return s.a(o),m;class C(nn.Module):def __init__(s):super().__init__();s.e1=P(4,64,bn=False,sample='down');s.e2=P(64,128,sample='down');s.e3=P(128,256,sample='down');s.e4=P(256,512,sample='down');s.d1=P(512+256,256,activ='leaky',sample='up');s.d2=P(256+128,128,activ='leaky',sample='up');s.d3=P(128+64,64,activ='leaky',sample='up');s.d4=P(64+4,3,bn=False,activ='leaky');s.f=nn.Conv2d(3,3,1);def forward(s,x,m):e1,m1=s.e1(x,m);e2,m2=s.e2(e1,m1);e3,m3=s.e3(e2,m2);e4,m4=s.e4(e3,m3);d1,_=s.d1(torch.cat([e4,e3],1),torch.cat([m4,m3],1));d2,_=s.d2(torch.cat([d1,e2],1),torch.cat([m2,m2],1));d3,_=s.d3(torch.cat([d2,e1],1),torch.cat([m2,m1],1));d4,_=s.d4(torch.cat([d3,x],1),torch.cat([m1,m],1));return torch.tanh(s.f(d4));AddYouknowModel=A;CleanYouknowModel=C"),
+    ("script_AI/run/run_add_youknow.py", "import argparse,json,sys,os,torch;from tqdm import tqdm;s=os.path.dirname(os.path.abspath(__file__));sys.path.append(os.path.dirname(s));from script_AI.model_loader import load_model;from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image;p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args();d='cuda'if torch.cuda.is_available()else'cpu';m=load_model('add_youknow',os.path.join(os.path.dirname(s),'pre_trained_models/add_youknow.pth'),d);os.makedirs(a.output_dir,exist_ok=True);[save_tensor_as_image(torch.sigmoid(m(t.to(d))),os.path.join(a.output_dir,f),sz)for f in tqdm(os.listdir(a.input_dir),file=sys.stderr)for t,sz in[(load_image_to_tensor(os.path.join(a.input_dir,f)))]];print(json.dumps({'processed_frame_folder':os.path.abspath(a.output_dir)}))"),
+    ("script_AI/run/run_mosaic_position.py", "import argparse,json,sys,os,torch;from tqdm import tqdm;s=os.path.dirname(os.path.abspath(__file__));sys.path.append(os.path.dirname(s));from script_AI.model_loader import load_model;from script_AI.images_processing import load_image_to_tensor,save_tensor_as_image;p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args();d='cuda'if torch.cuda.is_available()else'cpu';m=load_model('mosaic_position',os.path.join(os.path.dirname(s),'pre_trained_models/mosaic_position.pth'),d);os.makedirs(a.output_dir,exist_ok=True);[save_tensor_as_image(torch.sigmoid(m(t.to(d))),os.path.join(a.output_dir,f),sz)for f in tqdm(os.listdir(a.input_dir),file=sys.stderr)for t,sz in[(load_image_to_tensor(os.path.join(a.input_dir,f)))]];print(json.dumps({'processed_frame_folder':os.path.abspath(a.output_dir)}))"),
+    ("script_AI/run/run_clean_youknow.py", "import argparse,json,sys,os,torch;from tqdm import tqdm;s=os.path.dirname(os.path.abspath(__file__));sys.path.append(os.path.dirname(s));from script_AI.model_loader import load_model;from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor,save_tensor_as_image;p=argparse.ArgumentParser();p.add_argument('--input_dir',required=True);p.add_argument('--mask_dir',required=True);p.add_argument('--output_dir',required=True);a=p.parse_args();d='cuda'if torch.cuda.is_available()else'cpu';m=load_model('clean_youknow',os.path.join(os.path.dirname(s),'pre_trained_models/clean_youknow.pth'),d);os.makedirs(a.output_dir,exist_ok=True);[save_tensor_as_image((o*mt)+(it_n*(1-mt)),os.path.join(a.output_dir,f),sz,True)for f in tqdm(os.listdir(a.input_dir),file=sys.stderr)if os.path.exists(os.path.join(a.mask_dir,f))for it,sz in[(load_image_to_tensor(os.path.join(a.input_dir,f),norm=False))]for it_n in[it*2-1]for mt in[load_mask_to_tensor(os.path.join(a.mask_dir,f))]for it_n,mt in[(it_n.to(d),mt.to(d))]for o in[m(torch.cat((it_n,mt),1),mt)]];print(json.dumps({'processed_frame_folder':os.path.abspath(a.output_dir)}))"),
     ("script_AI/train/train_segmentation.py", "import torch,os,sys;import torch.nn as nn;import torch.optim as optim;from torch.utils.data import Dataset,DataLoader;from tqdm import tqdm;sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))));from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor;class S(Dataset):def __init__(s,i,m):s.i,s.m,s.f=i,m,sorted(os.listdir(i));def __len__(s):return len(s.f);def __getitem__(s,i):im,_=load_image_to_tensor(os.path.join(s.i,s.f[i]));ms=load_mask_to_tensor(os.path.join(s.m,s.f[i]));return im.squeeze(0),ms.squeeze(0);def t(m,d,l,o,c):m.train();[o.step()for i,k in tqdm(l,file=sys.stderr)for i,k in[(i.to(d),k.to(d))]for _ in[o.zero_grad()]for loss in[c(m(i),k)]for _ in[loss.backward()]];def r(m,p,e,lr,s):d='cuda'if torch.cuda.is_available()else'cpu';m.to(d);ds=S(os.path.join(p,'images'),os.path.join(p,'masks'));l=DataLoader(ds,batch_size=4,shuffle=True,num_workers=2);op=optim.Adam(m.parameters(),lr=lr);cr=nn.BCEWithLogitsLoss();[t(m,d,l,op,cr)or torch.save(m.state_dict(),s)for ep in range(e)]"),
     ("script_AI/train/train_clean_youknow.py", "import torch,os,sys;import torch.nn as nn;import torch.optim as optim;from torch.utils.data import Dataset,DataLoader;from tqdm import tqdm;sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))));from script_AI.images_processing import load_image_to_tensor,load_mask_to_tensor;class I(Dataset):def __init__(s,p):s.g,s.m,s.k=os.path.join(p,'original_images'),os.path.join(p,'mosaiced_images'),os.path.join(p,'mosaic_masks');s.f=sorted(os.listdir(s.g));def __len__(s):return len(s.f);def __getitem__(s,i):gt,_=load_image_to_tensor(os.path.join(s.g,s.f[i]),norm=False);mo,_=load_image_to_tensor(os.path.join(s.m,s.f[i]),norm=False);msk=load_mask_to_tensor(os.path.join(s.k,s.f[i]));return gt.squeeze(0),mo.squeeze(0),msk.squeeze(0);def t(m,d,l,o,c):m.train();[o.step()for gt,mo,msk in tqdm(l,file=sys.stderr)for gt,mo,msk in[(gt.to(d),mo.to(d),msk.to(d))]for mi in[torch.cat((mo*2-1,msk),1)]for _ in[o.zero_grad()]for out in[m(mi,msk)]for loss in[c(out*msk,gt*msk)]for _ in[loss.backward()]];def r(m,p,e,lr,s):d='cuda'if torch.cuda.is_available()else'cpu';m.to(d);ds=I(p);l=DataLoader(ds,batch_size=2,shuffle=True,num_workers=2);op=optim.Adam(m.parameters(),lr=lr);cr=nn.L1Loss();[t(m,d,l,op,cr)or torch.save(m.state_dict(),s)for ep in range(e)]"),
     ("README.md", "Dự án UnOrCensored. Cài đặt: `python setup.py`. Sử dụng: `python run.py --file_path <p> --task_name <t>`"),
@@ -348,5 +229,4 @@ def create_project_files(base_dir="UnOrCensored_Project"):
 
 if __name__ == "__main__":
     create_project_files()
-
 
